@@ -1,5 +1,9 @@
 # Bruma Coucou
 
+> [!WARNING]
+> **Versión BETA:** este proyecto se encuentra en fase de desarrollo y pruebas. Puede contener
+> errores y presentar comportamientos inesperados mientras continúa su desarrollo.
+
 **Bruma Coucou** es un instalador que transforma un **CachyOS con KDE Plasma 6** en Bruma, un
 escritorio con integración de [Coucou](https://github.com/Louis-CFM/coucou): suave, en tonos lavanda
 y rosa, con una barra de vidrio flotante.
