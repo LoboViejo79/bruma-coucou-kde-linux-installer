@@ -1,0 +1,249 @@
+#!/bin/bash
+# Coucou: la sesión X11 para AnyDesk (se elige al iniciar sesión: "Xfce (X11)").
+#
+# Plasma 6.8 ya no tiene sesión X11, y AnyDesk no acepta conexiones entrantes en Wayland ("Display
+# server not supported"). Esta sesión es un Xfce en X11 vestido como tu Plasma: se copia de Plasma, cada
+# vez que se entra, lo que hace que se sienta la misma computadora:
+#   - las pantallas: cuáles, en qué orden y cuál es la principal (~/.config/kwinoutputconfig.json)
+#   - el mouse y el touchpad: velocidad, desplazamiento natural, zurdo, tocar para hacer clic
+#     (~/.config/kcminputrc; el touchpad toca para hacer clic, como Plasma 6), y el teclado
+#   - tema, iconos, cursor y letra (los de GTK que escribe Plasma), y las apps Qt (Dolphin,
+#     Configuración, la Tienda) con el mismo aspecto que en Plasma
+#   - una barra de tareas abajo (menú, ventanas abiertas, bandeja, reloj) en la pantalla principal
+# La barra de Coucou (Mochi) no se abre aquí: necesita Wayland (en X11 quedaba como un rectángulo
+# transparente arriba que tapaba la pantalla y no dejaba hacer clic). Al entrar abre AnyDesk.
+# La sesión de todos los días sigue siendo Plasma (Wayland). La instala el instalador o la Tienda
+# cuando AnyDesk está instalado (tienda-nativo-root sesion-x11).
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+X="$CFG/xfce4/xfconf/xfce-perchannel-xml"
+VERSION=2   # sube cuando cambia lo que se arma la primera vez (la barra de tareas)
+mkdir -p "$X" "$CFG/coucou"
+registro="${XDG_CACHE_HOME:-$HOME/.cache}/coucou-sesion-x11.log"
+exec 2>>"$registro"
+echo "== $(date '+%F %T') sesión X11" >&2
+
+# 1. Pantallas como en Plasma. X11 no tiene escala por pantalla: cada una va a su resolución real,
+#    en el mismo orden (izquierda/derecha, arriba/abajo) y con la misma principal
+python3 -I - "$CFG/kwinoutputconfig.json" <<'PY' >&2
+import json, subprocess, sys
+try:
+    conf = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+try:
+    q = subprocess.run(["xrandr", "--query"], capture_output=True, text=True).stdout
+except FileNotFoundError:
+    sys.exit(0)
+conectadas = {l.split()[0] for l in q.splitlines() if " connected" in l}
+salidas = next((x["data"] for x in conf if x.get("name") == "outputs"), [])
+armados = next((x["data"] for x in conf if x.get("name") == "setups"), [])
+# El armado de Plasma con exactamente las pantallas que están conectadas ahora
+for armado in armados:
+    lista = [(salidas[o["outputIndex"]], o) for o in armado.get("outputs", []) if o.get("outputIndex", 99) < len(salidas)]
+    if {s.get("connectorName") for s, _ in lista} == conectadas:
+        break
+else:
+    sys.exit(0)
+pant = []
+for s, o in lista:
+    m = (s.get("mode") or {}).get("cvt") or {}
+    w, h = m.get("hdisplay"), m.get("vdisplay")
+    esc = s.get("scale") or 1
+    if not (w and h):
+        continue
+    p = o.get("position") or {}
+    pant.append(dict(nombre=s["connectorName"], w=w, h=h, lx=p.get("x", 0), ly=p.get("y", 0),
+                     lw=w / esc, lh=h / esc, activa=o.get("enabled", True), prio=o.get("priority", 99)))
+activas = [p for p in pant if p["activa"]]
+for p in activas:
+    # A la derecha de las que en Plasma estaban enteras a su izquierda; abajo de las que estaban arriba
+    p["x"] = sum(o["w"] for o in activas if o is not p and o["lx"] + o["lw"] <= p["lx"] + 1 and o["ly"] < p["ly"] + p["lh"] and p["ly"] < o["ly"] + o["lh"])
+    p["y"] = sum(o["h"] for o in activas if o is not p and o["ly"] + o["lh"] <= p["ly"] + 1 and o["lx"] < p["lx"] + p["lw"] and p["lx"] < o["lx"] + o["lw"])
+principal = min(activas, key=lambda p: p["prio"])["nombre"] if activas else None
+cmd = ["xrandr"]
+for p in pant:
+    cmd += ["--output", p["nombre"]]
+    if p["activa"]:
+        cmd += ["--mode", f'{p["w"]}x{p["h"]}', "--pos", f'{p["x"]}x{p["y"]}', "--rotate", "normal"]
+        if p["nombre"] == principal:
+            cmd += ["--primary"]
+    else:
+        cmd += ["--off"]
+print("pantallas:", " ".join(cmd))
+r = subprocess.run(cmd)
+if r.returncode != 0:  # un modo que X no conoce: al menos el orden y la principal, con su modo preferido
+    cmd = ["xrandr"]
+    for p in activas:
+        cmd += ["--output", p["nombre"], "--auto", "--pos", f'{p["x"]}x{p["y"]}'] + (["--primary"] if p["nombre"] == principal else [])
+    subprocess.run(cmd)
+PY
+
+# 2. Lo de Plasma que se ve: tema GTK, iconos, cursor, letra (de ~/.config/gtk-3.0/settings.ini, que
+#    Plasma mantiene al día) y si es oscuro
+ini() { sed -n "s/^$1=//p" "$CFG/gtk-3.0/settings.ini" 2>/dev/null | head -1; }
+kde() { kreadconfig6 --file "$1" --group "$2" --key "$3" 2>/dev/null; }
+oscuro=$([ "$(kde win11rc Appearance mode)" = dark ] || [ "$(ini gtk-application-prefer-dark-theme)" = true ] && echo 1 || echo 0)
+tema=$(ini gtk-theme-name); tema=${tema:-Breeze}
+# Breeze en Plasma cambia de color solo (con el módulo de KDE); aquí hace falta el nombre oscuro
+[ "$oscuro" = 1 ] && [ -d "/usr/share/themes/$tema-Dark" ] && tema="$tema-Dark"
+iconos=$(kde kdeglobals Icons Theme); iconos=${iconos:-$(ini gtk-icon-theme-name)}; iconos=${iconos:-Papirus-Dark}
+cursor=$(kde kcminputrc Mouse cursorTheme); cursor=${cursor:-$(ini gtk-cursor-theme-name)}; cursor=${cursor:-breeze_cursors}
+tam=$(kde kcminputrc Mouse cursorSize); tam=${tam:-$(ini gtk-cursor-theme-size)}; tam=${tam:-24}
+letra=$(ini gtk-font-name | sed 's/,  */ /; s/,/ /'); letra=${letra:-Inter 10}
+ventanas=$([ "$oscuro" = 1 ] && echo Fluent-round-Dark || echo Fluent-round-Light)
+[ -d "/usr/share/themes/$ventanas/xfwm4" ] || ventanas=Default
+
+xq() { xfconf-query -c "$1" -p "$2" -n -t "$3" -s "$4" 2>/dev/null || xfconf-query -c "$1" -p "$2" -t "$3" -s "$4" 2>/dev/null; }
+xq xsettings /Net/ThemeName string "$tema"
+xq xsettings /Net/IconThemeName string "$iconos"
+xq xsettings /Gtk/CursorThemeName string "$cursor"
+xq xsettings /Gtk/CursorThemeSize int "$tam"
+xq xsettings /Gtk/FontName string "$letra"
+xq xsettings /Gtk/DecorationLayout string ":minimize,maximize,close"
+xq xfwm4 /general/theme string "$ventanas"
+xq xfwm4 /general/button_layout string "O|HMC"
+xq xfwm4 /general/title_font string "$letra"
+echo "aspecto: tema=$tema iconos=$iconos cursor=$cursor/$tam letra=$letra ventanas=$ventanas" >&2
+# Para todo lo que se abra: el cursor, y las apps Qt con el aspecto de Plasma (colores, iconos, letra)
+export XCURSOR_THEME="$cursor" XCURSOR_SIZE="$tam" QT_QPA_PLATFORMTHEME=kde
+dbus-update-activation-environment --systemd XCURSOR_THEME XCURSOR_SIZE QT_QPA_PLATFORMTHEME 2>/dev/null
+
+# 3. El mouse y el touchpad como en Plasma. Se guardan en Xfce (canal "pointers"): xfsettingsd los
+#    aplica también a los que se conecten después (el mouse Bluetooth que se prende más tarde)
+python3 -I - "$CFG/kcminputrc" <<'PY' >&2
+import configparser, re, subprocess, sys
+def xq(p, t, v):
+    for extra in (["-n"], []):
+        if subprocess.run(["xfconf-query", "-c", "pointers", "-p", p, *extra, "-t", t, "-s", str(v)],
+                          capture_output=True).returncode == 0:
+            return
+cp = configparser.ConfigParser(strict=False, interpolation=None)
+cp.optionxform = str
+try:
+    cp.read(sys.argv[1])
+except Exception:
+    pass
+# Plasma guarda cada dispositivo como [Libinput][vendor][producto][nombre]
+plasma = {}
+for sec in cp.sections():
+    m = re.match(r"Libinput\]\[\d+\]\[\d+\]\[(.+)$", sec)
+    if m:
+        plasma[m.group(1)] = dict(cp[sec])
+try:
+    nombres = subprocess.run(["xinput", "list", "--name-only"], capture_output=True, text=True).stdout.splitlines()
+    lista = subprocess.run(["xinput", "list"], capture_output=True, text=True).stdout
+except FileNotFoundError:  # sin xinput: solo los que Plasma recuerda
+    nombres, lista = [], ""
+for n in set(nombres) | set(plasma):
+    n = n.strip()
+    if not n or "XTEST" in n or "Virtual core" in n:
+        continue
+    linea = next((l for l in lista.splitlines() if n in l), "")
+    if linea and "slave  pointer" not in linea:
+        continue
+    clave = "/" + re.sub(r"[^A-Za-z0-9]", "_", n) + "/Properties/"
+    p = plasma.get(n, {})
+    tactil = "touchpad" in n.lower() or "trackpad" in n.lower()
+    si = lambda k: p.get(k, "").lower() == "true"
+    # Plasma 6 trae "tocar para hacer clic" en los touchpads
+    if tactil:
+        xq(clave + "libinput_Tapping_Enabled", "int", 0 if p.get("TapToClick", "").lower() == "false" else 1)
+    if "NaturalScroll" in p:
+        xq(clave + "libinput_Natural_Scrolling_Enabled", "int", int(si("NaturalScroll")))
+    if "LeftHanded" in p:
+        xq(clave + "libinput_Left_Handed_Enabled", "int", int(si("LeftHanded")))
+    if "PointerAcceleration" in p:
+        xq(clave + "libinput_Accel_Speed", "double", float(p["PointerAcceleration"]))
+    if "DisableWhileTyping" in p:
+        xq(clave + "libinput_Disable_While_Typing_Enabled", "int", int(si("DisableWhileTyping")))
+    if "MiddleButtonEmulation" in p:
+        xq(clave + "libinput_Middle_Emulation_Enabled", "int", int(si("MiddleButtonEmulation")))
+    print("mouse/touchpad:", n, "(con ajustes de Plasma)" if p else "")
+PY
+# Teclado: la distribución de Plasma (si eligió una) y la repetición de teclas
+capas=$(kde kxkbrc Layout LayoutList); variantes=$(kde kxkbrc Layout VariantList)
+[ -n "$capas" ] && setxkbmap -layout "$capas" ${variantes:+-variant "$variantes"} 2>/dev/null
+retardo=$(kde kcminputrc Keyboard RepeatDelay); ritmo=$(kde kcminputrc Keyboard RepeatRate)
+xset r rate "${retardo:-600}" "${ritmo:-25}" 2>/dev/null
+
+# 4. La barra de tareas (la primera vez, o si la que hay es de una versión anterior de esta sesión):
+#    abajo, en la pantalla principal, como la de Plasma: menú, ventanas abiertas, bandeja, reloj
+if [ "$(cat "$CFG/coucou/sesion-x11.version" 2>/dev/null)" != "$VERSION" ]; then
+  [ -f "$X/xfce4-panel.xml" ] && mv -f "$X/xfce4-panel.xml" "$X/xfce4-panel.xml.antes-coucou"
+  cat > "$X/xfce4-panel.xml" <<'XML'
+<?xml version="1.1" encoding="UTF-8"?>
+<channel name="xfce4-panel" version="1.0">
+  <property name="configver" type="int" value="2"/>
+  <property name="panels" type="array">
+    <value type="int" value="1"/>
+    <property name="dark-mode" type="bool" value="true"/>
+    <property name="panel-1" type="empty">
+      <property name="position" type="string" value="p=8;x=0;y=0"/>
+      <property name="length" type="double" value="100"/>
+      <property name="position-locked" type="bool" value="true"/>
+      <property name="output-name" type="string" value="Primary"/>
+      <property name="size" type="uint" value="44"/>
+      <property name="icon-size" type="uint" value="24"/>
+      <property name="plugin-ids" type="array">
+        <value type="int" value="1"/>
+        <value type="int" value="2"/>
+        <value type="int" value="3"/>
+        <value type="int" value="4"/>
+        <value type="int" value="5"/>
+        <value type="int" value="6"/>
+      </property>
+    </property>
+  </property>
+  <property name="plugins" type="empty">
+    <property name="plugin-1" type="string" value="applicationsmenu">
+      <property name="show-button-title" type="bool" value="false"/>
+      <property name="button-icon" type="string" value="start-here"/>
+    </property>
+    <property name="plugin-2" type="string" value="tasklist">
+      <property name="show-labels" type="bool" value="false"/>
+      <property name="flat-buttons" type="bool" value="true"/>
+      <property name="grouping" type="uint" value="1"/>
+      <property name="include-all-monitors" type="bool" value="false"/>
+    </property>
+    <property name="plugin-3" type="string" value="separator">
+      <property name="expand" type="bool" value="true"/>
+      <property name="style" type="uint" value="0"/>
+    </property>
+    <property name="plugin-4" type="string" value="systray">
+      <property name="square-icons" type="bool" value="true"/>
+    </property>
+    <property name="plugin-5" type="string" value="clock">
+      <property name="mode" type="uint" value="2"/>
+      <property name="digital-layout" type="uint" value="1"/>
+      <property name="digital-date-format" type="string" value="%d/%m/%Y"/>
+      <property name="digital-time-format" type="string" value="%H:%M"/>
+    </property>
+    <property name="plugin-6" type="string" value="showdesktop"/>
+  </property>
+</channel>
+XML
+  echo "$VERSION" > "$CFG/coucou/sesion-x11.version"
+  echo "barra de tareas: armada (versión $VERSION)" >&2
+fi
+# El escritorio sin los iconos de Xfce (en Plasma no están)
+xq xfce4-desktop /desktop-icons/style int 0
+
+# 5. Ya andando: el fondo de Coucou en todas las pantallas, y AnyDesk
+(
+  sleep 4
+  fondo=$(ls /usr/share/wallpapers/coucou/contents/images/* 2>/dev/null | head -1)
+  if [ -n "$fondo" ] && command -v xfconf-query >/dev/null; then
+    for m in $(xrandr --listactivemonitors 2>/dev/null | awk 'NR > 1 {print $NF}'); do
+      xfconf-query -c xfce4-desktop -p "/backdrop/screen0/monitor$m/workspace0/last-image" -n -t string -s "$fondo" 2>/dev/null
+      xfconf-query -c xfce4-desktop -p "/backdrop/screen0/monitor$m/workspace0/image-style" -n -t int -s 5 2>/dev/null
+    done
+  fi
+  # Uno solo: el nativo si está (trae su servicio), si no el de Flathub; y no otro si ya se abrió
+  # (su propio inicio automático): dos AnyDesk a la vez se pelean por la conexión
+  if ! pgrep -u "$(id -u)" -f '(^|/)anydesk( |$)' >/dev/null; then
+    if command -v anydesk >/dev/null; then anydesk
+    elif flatpak info com.anydesk.Anydesk >/dev/null 2>&1; then flatpak run com.anydesk.Anydesk; fi
+  fi
+) >/dev/null 2>&1 &
+
+exec startxfce4

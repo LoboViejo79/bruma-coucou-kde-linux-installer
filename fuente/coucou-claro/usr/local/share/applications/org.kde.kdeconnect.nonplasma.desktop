@@ -1,0 +1,6 @@
+[Desktop Entry]
+# Coucou: el indicador aparte no hace falta (KDE Connect está en Segundo plano)
+Type=Application
+Name=KDE Connect Indicator
+Exec=kdeconnect-indicator
+NoDisplay=true

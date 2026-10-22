@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Coucou"
+            }
+        ],
+        "Category": "Environment and Weather",
+        "Description": "La temperatura y los próximos días, con un paisaje de pixeles",
+        "Icon": "weather-clear",
+        "Id": "org.coucou.clima",
+        "License": "GPL-2.0+",
+        "Name": "Coucou: Clima pixel",
+        "Version": "1.0",
+        "Website": "https://github.com/Louis-CFM/coucou"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

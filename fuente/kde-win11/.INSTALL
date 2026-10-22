@@ -1,0 +1,18 @@
+_caches() {
+  fc-cache -f >/dev/null 2>&1
+  for t in Win11 Win11-dark Fluent-cursors Fluent-dark-cursors; do
+    [ -d "/usr/share/icons/$t" ] && gtk-update-icon-cache -f -q "/usr/share/icons/$t" 2>/dev/null
+  done
+  update-desktop-database -q /usr/share/applications 2>/dev/null
+  true
+}
+
+post_install() {
+  _caches
+  echo ">> Para usar el inicio de sesión estilo Windows 11:"
+  echo "   sudo systemctl enable -f sddm.service"
+}
+
+post_upgrade() {
+  _caches
+}

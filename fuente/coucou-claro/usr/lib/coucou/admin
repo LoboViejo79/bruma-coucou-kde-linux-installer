@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Coucou: corre un programa como administrador (pkexec) cuidando la contraseña:
+#   - si se escribió mal, lo dice y la vuelve a pedir (hasta que esté bien o se cierre la ventana)
+#   - si la cuenta quedó bloqueada por varios intentos fallidos (pam_faillock), avisa cuánto falta
+#     en lugar de pedirla: mientras dura el bloqueo se rechaza hasta la contraseña correcta
+#   admin PROGRAMA [ARGUMENTOS...]   (sale con el código del programa; 126 si se canceló)
+# Lo usan Configuración, Bienvenido y el Administrador de tareas en lugar de pkexec directo.
+set -u
+[ $# -gt 0 ] || { echo "uso: admin PROGRAMA [ARGUMENTOS...]" >&2; exit 2; }
+
+# Minutos que faltan para que se destrabe la cuenta (0 = no está bloqueada)
+bloqueo() {
+  faillock --user "$(id -un)" 2>/dev/null | python3 -c '
+import sys, re, time, datetime
+conf = {"deny": 3, "fail_interval": 900, "unlock_time": 600}
+try:
+    for l in open("/etc/security/faillock.conf"):
+        m = re.match(r"\s*(deny|fail_interval|unlock_time)\s*=\s*(\d+)", l)
+        if m: conf[m.group(1)] = int(m.group(2))
+except OSError: pass
+ahora = time.time()
+fallos = []
+for l in sys.stdin:
+    m = re.match(r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\s.*\sV\s*$", l)
+    if m: fallos.append(datetime.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").timestamp())
+recientes = [t for t in fallos if ahora - t <= conf["fail_interval"]]
+if conf["deny"] and len(recientes) >= conf["deny"] and conf["unlock_time"]:
+    falta = max(recientes) + conf["unlock_time"] - ahora
+    print(max(0, int(falta // 60) + (1 if falta % 60 else 0)))
+else:
+    print(0)' 2>/dev/null || echo 0
+}
+avisar() { # título, texto
+  kdialog --title "$1" --sorry "$2" 2>/dev/null ||
+    notify-send -a Coucou -i dialog-password "$1" "$2" 2>/dev/null || echo "$1: $2" >&2
+}
+bloqueada() { # $1 minutos
+  avisar "Cuenta bloqueada un rato" "Hubo varios intentos con la contraseña equivocada y por seguridad la cuenta quedó bloqueada. Mientras dure, se rechaza hasta la contraseña correcta.
+
+Vuelve a intentarlo en $1 minuto$([ "$1" = 1 ] || echo s)."
+}
+
+m=$(bloqueo); [ "${m:-0}" -gt 0 ] && { bloqueada "$m"; exit 126; }
+for intento in 1 2 3 4 5; do
+  pkexec "$@"
+  rc=$?
+  case $rc in
+    126|127)
+      m=$(bloqueo)
+      if [ "${m:-0}" -gt 0 ]; then bloqueada "$m"; exit 126; fi
+      [ $rc = 126 ] && exit 126                  # se cerró la ventana: no se hace nada
+      avisar "La contraseña no es correcta" "La contraseña que escribiste no es la correcta. Escríbela de nuevo (con cuidado con las mayúsculas)." ;;
+    *) exit $rc ;;
+  esac
+done
+exit 127

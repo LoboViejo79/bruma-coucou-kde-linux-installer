@@ -1,0 +1,233 @@
+#!/bin/bash
+# Lanza Coucou (Mochi) con los arreglos para Linux, en cualquier PC.
+#
+# Audio: antes iba a una salida vacía ("coucou_null") por un flujo que saturaba PipeWire
+# (Louis-CFM/coucou#420); la heredaban las apps abiertas desde la barra (Firefox sin sonido). Ahora
+# Coucou cierra el audio cuando no suena nada: va a la salida normal y se quita la vacía si quedó.
+#
+# Tarjeta de video. La barra es una página de WebKitGTK; cada driver necesita lo suyo:
+#   - NVIDIA (driver propietario) en Wayland: la barra se cerraba al arrancar con "Error 71 (Protocol
+#     error)": "explicit sync is used, but no acquire point is set" (WebKit, bug 324551; visto en una
+#     RTX 3080, driver 615.78, WebKitGTK 2.54). Arreglo: __NV_DISABLE_EXPLICIT_SYNC=1, solo para
+#     Coucou; se conserva DMA-BUF (probado así en ese equipo).
+#   - AMD e Intel: sin cambios. WEBKIT_DISABLE_DMABUF_RENDERER ahí rompe la barra (la isla blanca se
+#     pinta solo a trozos), así que no se pone a todos.
+#   - Cualquier otro caso (máquinas virtuales, drivers viejos…): si Coucou se cae en el primer
+#     minuto, se vuelve a abrir solo en "modo seguro". Vale para ESE arranque de la PC: en el
+#     siguiente se prueba otra vez el normal (una caída suelta —un reinicio forzado, la pantalla que
+#     tardó en estar lista— no deja la barra en modo seguro para siempre). Si en el modo normal anda
+#     un minuto entero, el modo seguro se olvida.
+#     En AMD/Intel el modo seguro apaga la composición acelerada de WebKit (no DMA-BUF: sin
+#     DMA-BUF la barra se pinta a pedazos, como se vio en otra PC); en NVIDIA, DMA-BUF.
+#     Si se cae también en modo seguro, se vuelve a abrir un par de veces más: la barra no
+#     desaparece por una caída.
+#   - Pantalla perdida (no es la tarjeta de video): con dos pantallas, al pasar la barra de una a
+#     otra (o al conectar/desconectar un monitor) KWin a veces corta la conexión de la barra
+#     ("Error flushing display", sale con 1); al cerrar sesión la pantalla ya no está ("Failed to
+#     initialize GTK"). Antes eso se tomaba por un fallo de video: la barra pasaba al modo seguro y,
+#     sin DMA-BUF, en AMD/Intel se pintaba corrupta. Ahora se reabre en modo normal (o, sin
+#     pantalla, no se reabre) y no se anota ningún modo seguro.
+#   - Entre pantallas: con "todas las pantallas (la que estás usando)" la barra salta a la del
+#     ratón; al saltar, GTK le cambia la superficie y Coucou seguía usando la vieja para decirle a
+#     KWin dónde se minimizan las ventanas: KWin cortaba la conexión y la barra se cerraba (y se
+#     reabría) en cada salto. /usr/lib/coucou/libcoucou-pantallas.so (solo en Coucou, no en las
+#     apps que abre) no deja pasar ese pedido con una superficie que ya no existe.
+#     COUCOU_SIN_FILTRO=1 (en ~/.config/coucou/entorno) lo apaga.
+#   - A mano: ~/.config/coucou/entorno, líneas VARIABLE=valor que se agregan al arrancar.
+# Lo que decide queda en ~/.cache/coucou-launch.log.
+BIN=${COUCOU_BIN:-/usr/bin/coucou}   # (pruebas: otro ejecutable)
+unset PULSE_SINK
+for m in $(pactl list short modules 2>/dev/null | awk '/module-null-sink/ && /sink_name=coucou_null/ {print $1}'); do
+  pactl unload-module "$m" >/dev/null 2>&1
+done
+
+CFG=${XDG_CONFIG_HOME:-$HOME/.config}/coucou
+SEGURO="$CFG/arranque-seguro"
+LOG=${XDG_CACHE_HOME:-$HOME/.cache}/coucou-launch.log
+mkdir -p "$(dirname "$LOG")" "$CFG" 2>/dev/null
+anota() { echo "$(date '+%F %T') $*" >> "$LOG" 2>/dev/null; }
+
+es_nvidia() { [ -e /proc/driver/nvidia/version ] || grep -q '^nvidia ' /proc/modules 2>/dev/null; }
+modo_seguro() {
+  if es_nvidia; then
+    export WEBKIT_DISABLE_DMABUF_RENDERER=1 __NV_DISABLE_EXPLICIT_SYNC=1
+  else
+    export WEBKIT_DISABLE_COMPOSITING_MODE=1
+  fi
+  # Segundo nivel (si ni así anduvo): todo lo anterior junto
+  [ "$(cat "$SEGURO" 2>/dev/null)" = 2 ] && export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
+}
+BOOT=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo ?)
+
+# NVIDIA recién actualizado sin reiniciar: el módulo del núcleo sigue siendo el viejo y las
+# bibliotecas ya son las nuevas; lo que se dibuje con la GPU desde ahí sale roto (la barra
+# cortada, invisible o con el vidrio corrido). Hasta reiniciar la PC, sin GPU para la barra.
+nv_desfase=
+if [ -r /proc/driver/nvidia/version ]; then
+  kmod=$(grep -m1 '^NVRM' /proc/driver/nvidia/version | grep -oE '[0-9]{3,}\.[0-9]+(\.[0-9]+)?' | head -1)
+  user=$(LC_ALL=C pacman -Q nvidia-utils 2>/dev/null | awk '{print $2}'); user=${user%%-*}
+  if [ -n "$kmod" ] && [ -n "$user" ] && [ "$kmod" != "$user" ]; then
+    nv_desfase="driver NVIDIA $kmod en uso, $user instalado: reiniciá la PC"
+    export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 __NV_DISABLE_EXPLICIT_SYNC=1
+  fi
+fi
+
+# NVIDIA con el driver propietario, en Wayland
+if [ "${XDG_SESSION_TYPE:-}" = wayland ] && { [ -e /proc/driver/nvidia/version ] || grep -q '^nvidia ' /proc/modules 2>/dev/null; }; then
+  export __NV_DISABLE_EXPLICIT_SYNC=1
+  quien="NVIDIA en Wayland"
+fi
+# El modo seguro es de este arranque de la PC; de otro anterior, se prueba primero el normal
+probando=
+if [ -f "$SEGURO" ]; then
+  if [ "$(cat "$SEGURO.arranque" 2>/dev/null)" = "$BOOT" ]; then
+    modo_seguro; quien="modo seguro (nivel $(cat "$SEGURO"))"
+  else
+    probando=1; quien="normal (el modo seguro era de un arranque anterior)"
+  fi
+fi
+# Ajustes a mano
+if [ -f "$CFG/entorno" ]; then
+  while IFS= read -r l; do
+    case "$l" in ''|'#'*) continue ;; *=*) export "${l%%=*}=${l#*=}" ;; esac
+  done < "$CFG/entorno"
+fi
+
+# Ya andando: Coucou recibe las opciones (--taskbar …) y esta copia termina enseguida
+if pgrep -u "$(id -u)" -x "$(basename "$BIN")" >/dev/null; then
+  exec "$BIN" "$@"
+fi
+
+# Sin pantalla (una sesión sin escritorio, una instalación desde la consola): Coucou no puede
+# abrirse y eso no es culpa de la tarjeta de video; no se anota ningún modo seguro
+if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  anota "sin pantalla (DISPLAY y WAYLAND_DISPLAY vacías): no se abre"
+  exit 1
+fi
+
+# Sesión X11 (la de AnyDesk, "Xfce (X11)"): la barra necesita Wayland (layer-shell). En X11 queda como
+# una ventana transparente de 960x560 arriba al centro que tapa la pantalla y se come los clics del
+# mouse: no se abre (esa sesión tiene su propia barra de tareas, ver /usr/lib/coucou/sesion-x11)
+if [ "${XDG_SESSION_TYPE:-}" = x11 ] || { [ -z "${WAYLAND_DISPLAY:-}" ] && [ -n "${DISPLAY:-}" ]; }; then
+  anota "sesión X11: la barra solo anda en Wayland, no se abre"
+  exit 0
+fi
+
+# El efecto de esquinas redondeadas de KWin (kwin-effect-rounded-corners) toma la barra por una
+# ventana común y le dibuja su borde y su sombra: rayas negras bajo cada burbuja y en los bordes
+# de la pantalla. La barra queda fuera de él (sus esquinas las dibuja ella misma).
+if ls /usr/lib/qt6/plugins/kwin/effects/plugins/kwin4_effect_shapecorners.so >/dev/null 2>&1 && command -v kwriteconfig6 >/dev/null; then
+  excl=$(kreadconfig6 --file kwinrc --group Round-Corners --key Exclusions 2>/dev/null)
+  case ",$excl," in
+    *,coucou,*) ;;
+    *) kwriteconfig6 --file kwinrc --group Round-Corners --key Exclusions "${excl:+$excl,}coucou"
+       # Recargado para que lo tome ya (solo si está activo)
+       if command -v qdbus6 >/dev/null && [ "$(qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded kwin4_effect_shapecorners 2>/dev/null)" = true ]; then
+         qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect kwin4_effect_shapecorners >/dev/null 2>&1
+         qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect kwin4_effect_shapecorners >/dev/null 2>&1
+       fi
+       anota "esquinas redondeadas de KWin: la barra queda fuera del efecto" ;;
+  esac
+fi
+
+# Los lugares del explorador con los iconos del tema elegido (el diseño de Windows 11 les ponía unos
+# fijos que no cambiaban con los iconos)
+[ -x /usr/lib/coucou/coucou-iconos ] && { /usr/lib/coucou/coucou-iconos lugares >/dev/null 2>&1 & }
+
+# El mismo fondo de Coucou en todas las pantallas (las que se conectaron con el de por defecto)
+[ -x /usr/lib/coucou/fondos-pantallas ] && { /usr/lib/coucou/fondos-pantallas >/dev/null 2>&1 & }
+
+# El Historial del chat (los chats de Claude Code del proyecto abierto) de un proyecto con letras
+# fuera del ASCII (~/Imágenes/…): Claude Code guarda sus chats en ~/.claude/projects/<carpeta> con esas
+# letras como "-" (-home-mega-Im-genes-…) y Coucou los busca con ellas (-home-mega-Imágenes-…), así
+# que no los encontraba. Se deja un enlace con el nombre que busca Coucou (sale del "cwd" de los chats).
+historial_con_acentos() {
+  local d cwd nombre
+  for d in "$HOME"/.claude/projects/*/; do
+    d=${d%/}
+    [ -L "$d" ] && continue
+    cwd=$(grep -a -m1 -o -h '"cwd":"[^"\\]*"' "$d"/*.jsonl 2>/dev/null | head -1 | cut -d'"' -f4)
+    [ -n "$cwd" ] || continue
+    LC_ALL=C grep -q '[^ -~]' <<<"$cwd" || continue          # (solo ASCII: Coucou ya lo encuentra)
+    nombre=$(LC_ALL=C.UTF-8 sed 's/[^[:alnum:]]/-/g' <<<"$cwd")
+    [ "$nombre" != "$(basename "$d")" ] && [ ! -e "$HOME/.claude/projects/$nombre" ] &&
+      ln -s -- "$(basename "$d")" "$HOME/.claude/projects/$nombre" 2>/dev/null &&
+      anota "historial: $nombre -> $(basename "$d")"
+  done
+}
+historial_con_acentos
+
+[ -n "$nv_desfase" ] && quien="${quien:-normal}; sin GPU: $nv_desfase"
+anota "arranca (${quien:-normal}) $*"
+inicio=$(date +%s)
+# Lo que Coucou dice al cerrarse (además de ir al registro de la sesión, como siempre): sirve para
+# saber si se cayó por la tarjeta de video o porque perdió la pantalla
+SALIDA="${XDG_RUNTIME_DIR:-$CFG}/coucou-salida.$$"
+: > "$SALIDA" 2>/dev/null || SALIDA=/dev/null
+PANTALLAS=/usr/lib/coucou/libcoucou-pantallas.so
+pre=${LD_PRELOAD:-}
+[ -f "$PANTALLAS" ] && [ "${COUCOU_SIN_FILTRO:-}" != 1 ] && pre="$PANTALLAS${pre:+:$pre}"
+# Las transiciones de la barra (el mochi que viaja al panel; ver /usr/share/coucou/web).
+# COUCOU_SIN_TRANSICIONES=1 (en ~/.config/coucou/entorno) las apaga.
+WEB=/usr/lib/coucou/libcoucou-web.so
+[ -f "$WEB" ] && [ "${COUCOU_SIN_TRANSICIONES:-}" != 1 ] && pre="$WEB${pre:+:$pre}"
+LD_PRELOAD="$pre" "$BIN" "$@" 2> >(tee "$SALIDA" >&2) &
+pid=$!
+# Anduvo un minuto en modo normal tras un modo seguro de antes: se olvida
+if [ -n "$probando" ]; then
+  ( sleep 60; kill -0 "$pid" 2>/dev/null && rm -f "$SEGURO" "$SEGURO.arranque" && anota "el modo normal anduvo: se olvida el modo seguro" ) &
+fi
+wait "$pid"
+rc=$?
+duro=$(( $(date +%s) - inicio ))
+# Cerrado a propósito (0, TERM, KILL, INT) o después del primer minuto: no se toca nada
+case $rc in 0|130|137|143) rm -f "$SALIDA" 2>/dev/null; exit $rc ;; esac
+sleep 0.2   # que termine de escribirse lo que dijo al cerrarse
+# Perdió la pantalla, no es la tarjeta de video: sin modo seguro (ver arriba)
+if grep -q 'Failed to initialize GTK' "$SALIDA" 2>/dev/null ||
+   { [ -n "${WAYLAND_DISPLAY:-}" ] && [ ! -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$WAYLAND_DISPLAY" ]; }; then
+  rm -f "$SALIDA"
+  anota "terminó con $rc: la pantalla ya no está (se cerró la sesión): no se reabre ni se anota modo seguro"
+  exit $rc
+fi
+if grep -qE 'Error flushing display|Io error' "$SALIDA" 2>/dev/null && ! grep -q 'Protocol error' "$SALIDA" 2>/dev/null; then
+  rm -f "$SALIDA"
+  perdidas="$CFG/.pantalla-$BOOT"
+  n=$(( $(cat "$perdidas" 2>/dev/null || echo 0) + 1 ))
+  echo $n > "$perdidas"
+  if [ $n -gt 20 ]; then anota "perdió la pantalla otra vez ($n veces en este arranque): no se reabre más"; exit $rc; fi
+  anota "terminó con $rc tras ${duro}s: KWin cortó la conexión (cambio de pantalla), se reabre en el mismo modo ($n/20)"
+  sleep 2
+  exec "$0" "$@"
+fi
+rm -f "$SALIDA" 2>/dev/null
+# Se cayó después del primer minuto (no es la tarjeta de video): se vuelve a abrir igual, o la
+# barra desaparecía para siempre; hasta 5 veces por arranque de la PC (no un bucle sin fin)
+if [ $duro -ge 60 ]; then
+  caidas="$CFG/.caidas-$BOOT"
+  n=$(( $(cat "$caidas" 2>/dev/null || echo 0) + 1 ))
+  echo $n > "$caidas"
+  if [ $n -gt 5 ]; then anota "terminó con $rc tras ${duro}s ($n veces en este arranque): no se reabre más"; exit $rc; fi
+  anota "terminó con $rc tras ${duro}s: se cayó, se reabre ($n/5)"
+  sleep 2
+  exec "$0" "$@"
+fi
+nivel=$(cat "$SEGURO" 2>/dev/null || echo 0)
+if [ -n "$probando" ]; then
+  # El normal falló en este arranque: el modo seguro que ya se sabía, sin subir de nivel
+  [ "$nivel" -ge 1 ] || nivel=1
+elif [ "$nivel" -ge 2 ]; then
+  # Ni así: unas pocas veces más, con una pausa, por si era algo pasajero (no un bucle sin fin)
+  intentos="$CFG/.reintentos-$BOOT"
+  n=$(( $(cat "$intentos" 2>/dev/null || echo 0) + 1 ))
+  echo $n > "$intentos"
+  if [ $n -gt 3 ]; then anota "se cayó con $rc también en modo seguro ($n veces): no se reintenta más"; exit $rc; fi
+  anota "se cayó con $rc también en modo seguro: se reintenta en 10 s ($n/3)"
+  sleep 10
+else
+  nivel=$((nivel + 1))
+fi
+echo $nivel > "$SEGURO"
+echo "$BOOT" > "$SEGURO.arranque"
+anota "se cayó al arrancar ($rc a los ${duro}s): se abre en modo seguro nivel $nivel"
+exec "$0" "$@"

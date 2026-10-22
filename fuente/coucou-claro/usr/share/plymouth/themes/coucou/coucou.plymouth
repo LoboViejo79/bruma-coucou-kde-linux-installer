@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Coucou
+Description=Mochi flotando sobre el violeta de Coucou, con barra de carga
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/coucou
+ScriptFile=/usr/share/plymouth/themes/coucou/coucou.script

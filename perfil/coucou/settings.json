@@ -1,0 +1,14 @@
+{
+  "barPosition": "top",
+  "barTone": "color",
+  "barAccent": "auto",
+  "barGlass": true,
+  "taskbar": "coucou",
+  "soundEnabled": true,
+  "soundVolume": 0.12,
+  "mochiOutfit": "auto",
+  "pillColors": {},
+  "autostart": false,
+  "openOnHover": false,
+  "autoCloseInterval": 15.0
+}

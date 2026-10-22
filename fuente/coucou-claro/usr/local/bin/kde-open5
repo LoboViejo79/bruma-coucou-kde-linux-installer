@@ -1,0 +1,30 @@
+#!/bin/sh
+# Coucou: xdg-open y kde-open a prueba de AppImages. Algunas AppImages (p. ej. el Epic Games Launcher) abren
+# los enlaces con su entorno: LD_LIBRARY_PATH y otras rutas apuntan a sus bibliotecas dentro de
+# /tmp/.mount_*. Con eso, kde-open (Plasma) carga una libnghttp2 vieja y se cae ("symbol lookup
+# error"), y el navegador nunca se abre. Aquí se quita del entorno todo lo que apunte dentro de
+# una AppImage montada y se sigue con el xdg-open del sistema.
+# Solo con el propio shell (sin tr/grep): con este entorno, hasta esos podrían cargar
+# bibliotecas equivocadas
+clean() {   # $1 = valor con rutas separadas por ":" → sin las de /tmp/.mount_*
+    rest=$1 out=
+    while [ -n "$rest" ]; do
+        case "$rest" in *:*) item=${rest%%:*}; rest=${rest#*:} ;; *) item=$rest; rest= ;; esac
+        case "$item" in /tmp/.mount_*|'') ;; *) out=${out:+$out:}$item ;; esac
+    done
+    printf '%s' "$out"
+}
+for v in LD_LIBRARY_PATH LD_PRELOAD PATH XDG_DATA_DIRS GTK_PATH GIO_MODULE_DIR GTK_EXE_PREFIX GTK_DATA_PREFIX \
+         GDK_PIXBUF_MODULEDIR GDK_PIXBUF_MODULE_FILE QT_PLUGIN_PATH QML2_IMPORT_PATH PYTHONPATH PYTHONHOME \
+         PERLLIB GSETTINGS_SCHEMA_DIR GST_PLUGIN_SYSTEM_PATH GST_PLUGIN_PATH; do
+    eval "val=\${$v:-}"
+    case "$val" in
+        *"/tmp/.mount_"*)
+            new=$(clean "$val")
+            if [ -n "$new" ]; then export "$v=$new"; else unset "$v"; fi ;;
+    esac
+done
+unset APPDIR APPIMAGE ARGV0 OWD
+[ -n "${PATH:-}" ] || PATH=/usr/local/bin:/usr/bin:/bin
+# El mismo archivo sirve de xdg-open y de kde-open (el que se cae): sigue con el del sistema
+exec "/usr/bin/${0##*/}" "$@"

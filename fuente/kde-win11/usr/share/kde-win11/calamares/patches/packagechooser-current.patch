@@ -1,0 +1,14 @@
+Paso "Arranque" (packagechooser): la opción por defecto se marcaba como seleccionada pero no como
+la actual; al volver a dibujar la página (p. ej. al traducirla) se mostraba la introducción
+("Selección de paquetes" con una caja vacía) en vez de la opción elegida.
+--- a/src/modules/packagechooser/PackageChooserPage.cpp
++++ b/src/modules/packagechooser/PackageChooserPage.cpp
+@@ -110,7 +110,7 @@
+ {
+     if ( index.isValid() )
+     {
+-        ui->products->selectionModel()->select( index, QItemSelectionModel::Select );
++        ui->products->selectionModel()->setCurrentIndex( index, QItemSelectionModel::ClearAndSelect );
+     }
+     currentChanged( index );
+ }

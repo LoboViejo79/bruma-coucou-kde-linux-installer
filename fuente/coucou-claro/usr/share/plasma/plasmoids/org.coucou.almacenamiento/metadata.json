@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Coucou"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Cuánto ocupa el disco y cuánto queda libre",
+        "Icon": "drive-harddisk",
+        "Id": "org.coucou.almacenamiento",
+        "License": "GPL-2.0+",
+        "Name": "Coucou: Almacenamiento",
+        "Version": "1.0",
+        "Website": "https://github.com/Louis-CFM/coucou"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

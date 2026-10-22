@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "Coucou" }],
+        "Category": "Utilities",
+        "Description": "Un reloj de arena: un clic empieza o pausa, la rueda del ratón cambia el tiempo",
+        "Icon": "chronometer",
+        "Id": "org.coucou.temporizador",
+        "License": "GPL-2.0+",
+        "Name": "Coucou: Temporizador",
+        "Version": "1.0",
+        "Website": "https://github.com/Louis-CFM/coucou"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

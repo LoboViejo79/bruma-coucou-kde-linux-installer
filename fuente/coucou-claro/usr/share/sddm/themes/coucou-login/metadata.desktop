@@ -1,0 +1,12 @@
+[SddmGreeterTheme]
+Name=Coucou Code
+Description=Inicio de sesión con el diseño de Coucou: vidrio, violeta y Mochi
+Author=Coucou
+Type=sddm-theme
+Version=1.0
+Screenshot=preview.png
+MainScript=Main.qml
+ConfigFile=theme.conf
+Theme-Id=coucou-login
+Theme-API=2.0
+QtVersion=6

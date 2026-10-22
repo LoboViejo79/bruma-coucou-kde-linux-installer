@@ -1,0 +1,44 @@
+#!/bin/sh
+# Coucou Code: el tema del inicio de sesión (SDDM). Se corre con pkexec.
+#   login-theme coucou-login [imagen]   el de Coucou, con ese fondo
+#   login-theme default                 el que había antes
+set -eu
+CONF=/etc/sddm.conf.d/99-coucou.conf
+# Sin teclado virtual en el login de Coucou: CachyOS pone InputMethod=qtvirtualkeyboard y con él
+# lo escrito en la contraseña puede quedar "a medio confirmar": se ven los puntos pero el tema
+# recibe el campo vacío, y Enter o la flecha no hacen nada (o se manda una clave incompleta y,
+# tras 3 intentos, pam_faillock bloquea la cuenta unos minutos).
+write_conf() {
+    printf '# Coucou Code (lo quita: Configuración > Personalización > Temas)\n[General]\nInputMethod=\n\n[Theme]\nCurrent=coucou-login\n' > "$CONF"
+}
+case "${1:-}" in
+    coucou-login)
+        [ -d /usr/share/sddm/themes/coucou-login ] || exit 3
+        mkdir -p /etc/sddm.conf.d /var/lib/coucou
+        write_conf
+        img=${2:-}
+        img=${img#file://}
+        if [ -n "$img" ] && [ -f "$img" ] && [ "$(stat -c %s "$img")" -lt 104857600 ]; then
+            cp -f "$img" /var/lib/coucou/login-background
+            chmod 644 /var/lib/coucou/login-background
+            bg=/var/lib/coucou/login-background
+            # Copias a la medida de la pantalla: el original puede pesar decenas de MB y
+            # retrasar el login. La desenfocada es el fondo de la pantalla de carga.
+            if command -v magick >/dev/null; then
+                magick "$img[0]" -resize 2560x1440^ -depth 8 -quality 92 /var/lib/coucou/login-background.jpg &&
+                    magick /var/lib/coucou/login-background.jpg -resize 640x360^ -blur 0x14 -resize 2560x1440^ \
+                        -quality 90 /var/lib/coucou/login-blur.jpg &&
+                    chmod 644 /var/lib/coucou/login-background.jpg /var/lib/coucou/login-blur.jpg &&
+                    bg=/var/lib/coucou/login-background.jpg
+            fi
+            printf '[General]\nbackground=%s\n' "$bg" > /usr/share/sddm/themes/coucou-login/theme.conf.user
+        fi ;;
+    default)
+        rm -f "$CONF" ;;
+    --fix-input)
+        # Gancho de pacman: un login de Coucou ya puesto recibe el arreglo del teclado virtual
+        if [ -f "$CONF" ] && grep -q '^Current=coucou-login' "$CONF" && ! grep -q '^InputMethod=' "$CONF"; then
+            write_conf
+        fi ;;
+    *) echo "uso: login-theme coucou-login [imagen] | default" >&2; exit 2 ;;
+esac

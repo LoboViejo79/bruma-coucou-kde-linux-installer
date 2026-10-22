@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Configuración
+GenericName=Configuración del sistema
+Comment=Personalización, colores, modo oscuro, dispositivos y actualizaciones
+Exec=win11-settings %u
+Icon=preferences-system
+Categories=Settings;System;
+Keywords=configuración;ajustes;settings;modo oscuro;colores;tema;
+StartupNotify=true

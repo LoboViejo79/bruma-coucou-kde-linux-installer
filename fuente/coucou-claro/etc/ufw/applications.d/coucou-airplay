@@ -1,0 +1,5 @@
+# Coucou: recibir la pantalla del iPhone (Teléfono › Pantalla › iPhone, UxPlay con PIN)
+[Coucou AirPlay]
+title=AirPlay (Coucou)
+description=Recibir la pantalla del iPhone con UxPlay
+ports=7000,7001,7100/tcp|6000,6001,7011/udp

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <action id="org.coucou.modo-juego">
+    <description>Game mode: clean memory and set the graphics card to maximum</description>
+    <description xml:lang="es">Modo juego: limpiar la memoria y poner la tarjeta de video al máximo</description>
+    <message>Game mode needs permission to clean memory.</message>
+    <message xml:lang="es">El modo juego necesita permiso para limpiar la memoria.</message>
+    <icon_name>applications-games</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/coucou/modo-juego-root</annotate>
+  </action>
+</policyconfig>

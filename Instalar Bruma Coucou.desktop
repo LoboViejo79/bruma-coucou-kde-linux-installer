@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Instalar Bruma Coucou
+Comment=Instala Bruma Coucou, el diseño de Coucou para KDE Plasma
+Exec=bash -c 'exec bash "$(dirname "$1")/instalar.sh"' _ %k
+Icon=system-software-install
+Terminal=false

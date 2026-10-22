@@ -1,0 +1,11 @@
+#!/bin/sh
+# Coucou: al cerrarse un panel de la barra, la ventana que estaba adelante vuelve a ser la activa
+# (si la barra se había quedado con el foco). Lo pide la barra (libcoucou-web.so); ver
+# /usr/share/coucou/web/foco.js.
+command -v qdbus6 >/dev/null || exit 0
+n=coucou-foco-$$
+id=$(qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript /usr/share/coucou/web/foco.js "$n" 2>/dev/null) || exit 0
+qdbus6 org.kde.KWin "/Scripting/Script$id" org.kde.kwin.Script.run >/dev/null 2>&1
+sleep 1
+qdbus6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript "$n" >/dev/null 2>&1
+exit 0

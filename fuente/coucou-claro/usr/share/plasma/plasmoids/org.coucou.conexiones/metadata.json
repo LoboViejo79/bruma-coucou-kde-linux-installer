@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Coucou"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Wi-Fi, Bluetooth y modo avión, con un clic",
+        "Icon": "network-wireless",
+        "Id": "org.coucou.conexiones",
+        "License": "GPL-2.0+",
+        "Name": "Coucou: Conexiones",
+        "Version": "1.0",
+        "Website": "https://github.com/Louis-CFM/coucou"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

@@ -1,0 +1,58 @@
+[
+  {
+    "id": 25,
+    "location": "bottom",
+    "height": 46,
+    "alignment": "center",
+    "lengthMode": "fill",
+    "floating": true,
+    "offset": 0,
+    "minimumLength": 1920,
+    "maximumLength": 1920,
+    "widgets": [
+      {
+        "type": "org.kde.plasma.kickoff",
+        "groups": {
+          "General": {
+            "favoritesPortedToKAstats": "true"
+          }
+        }
+      },
+      {
+        "type": "org.kde.plasma.pager",
+        "groups": {}
+      },
+      {
+        "type": "org.kde.plasma.icontasks",
+        "groups": {
+          "General": {
+            "launchers": "applications:systemsettings.desktop,preferred://filemanager,preferred://browser,applications:org.kde.konsole.desktop"
+          }
+        }
+      },
+      {
+        "type": "org.kde.plasma.marginsseparator",
+        "groups": {}
+      },
+      {
+        "type": "org.kde.plasma.systemtray",
+        "groups": {
+          "37": {},
+          "Applets": {},
+          "Applets/46": {
+            "immutability": "1",
+            "plugin": "org.kde.plasma.battery"
+          }
+        }
+      },
+      {
+        "type": "org.kde.plasma.digitalclock",
+        "groups": {}
+      },
+      {
+        "type": "org.kde.plasma.showdesktop",
+        "groups": {}
+      }
+    ]
+  }
+]

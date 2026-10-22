@@ -1,0 +1,13 @@
+[Desktop Entry]
+# Coucou: KDE Connect abre la ventana del celular de Coucou (con la pantalla por ADB,
+# opcional). La app original sigue en esa ventana: "Abrir KDE Connect".
+Type=Application
+Name=KDE Connect
+GenericName=Celular
+GenericName[es]=Tu celular en la PC
+Comment=Archivos, portapapeles, mensajes y la pantalla del celular
+Exec=coucou-launch --phone
+Icon=kdeconnect
+Categories=Qt;KDE;Network;
+Keywords=celular;telefono;teléfono;android;adb;scrcpy;pantalla;phone;
+StartupNotify=false

@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/share/plymouth/themes/coucou/*
+
+[Action]
+Description = Coucou: actualizando la animación de arranque...
+When = PostTransaction
+Exec = /usr/lib/coucou/plymouth-rehacer

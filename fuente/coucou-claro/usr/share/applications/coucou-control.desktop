@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Centro de control
+Comment=Wi-Fi, Bluetooth, sonido, brillo, música y más, en un panel que puedes armar a tu gusto
+Exec=/usr/bin/coucou-control
+Icon=preferences-system
+Categories=Settings;System;
+Keywords=wifi;bluetooth;volumen;brillo;control;panel;
+X-KDE-Shortcuts=Meta+C

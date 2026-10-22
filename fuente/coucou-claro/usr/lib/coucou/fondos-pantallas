@@ -1,0 +1,54 @@
+#!/bin/bash
+# Coucou: el mismo fondo en todas las pantallas.
+#
+# Una pantalla que se conecta (un monitor nuevo) recibe el fondo "por defecto" del tema de Plasma.
+# El tema de Coucou (Coucou-claro/oscuro, ~/.local/share/plasma/desktoptheme) es una copia del de
+# Windows 11 y por eso esas pantallas aparecían con el fondo de Windows. Esto:
+#   1. pone en el tema de Coucou, como fondo por defecto, el de Coucou
+#      (/usr/share/wallpapers/coucou, lo arma el instalador);
+#   2. a las pantallas que quedaron con el fondo por defecto (o el de Windows 11 / CachyOS) les pone
+#      el mismo de la pantalla principal. Un fondo elegido a mano en una pantalla no se toca.
+#
+#   fondos-pantallas              las dos cosas (lo corre coucou-launch al entrar y el instalador)
+#   fondos-pantallas --solo-tema  solo 1 (coucou-colors, al rehacer el tema)
+set -u
+P=/usr/share/wallpapers/coucou
+dt=${XDG_DATA_HOME:-$HOME/.local/share}/plasma/desktoptheme
+
+img=$(ls "$P"/contents/images/*x*.* 2>/dev/null | head -1)
+if [ -n "$img" ] && command -v kwriteconfig6 >/dev/null; then
+  b=$(basename "$img"); wh=${b%.*}; suf=.${b##*.}
+  for m in "$dt"/Coucou-*/metadata.desktop; do
+    [ -f "$m" ] || continue
+    kwriteconfig6 --file "$m" --group Wallpaper --key defaultWallpaperTheme coucou
+    kwriteconfig6 --file "$m" --group Wallpaper --key defaultFileSuffix "$suf"
+    kwriteconfig6 --file "$m" --group Wallpaper --key defaultWidth "${wh%x*}"
+    kwriteconfig6 --file "$m" --group Wallpaper --key defaultHeight "${wh#*x}"
+  done
+fi
+[ "${1:-}" = --solo-tema ] && exit 0
+
+command -v qdbus6 >/dev/null || exit 0
+[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ] || exit 0
+# Plasma recién arrancado: unos segundos para que estén todas las pantallas
+for _ in $(seq 20); do
+  qdbus6 org.kde.plasmashell /PlasmaShell >/dev/null 2>&1 && break
+  sleep 1
+done
+qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript '
+var d = desktops(), fondo = "", n = 0;
+function imagen(x) { x.currentConfigGroup = ["Wallpaper", "org.kde.image", "General"]; return String(x.readConfig("Image", "") || ""); }
+for (var i = 0; i < d.length; i++) if (d[i].screen === 0 && d[i].wallpaperPlugin === "org.kde.image") fondo = imagen(d[i]);
+if (fondo === "") fondo = "file:///usr/share/wallpapers/coucou/fondo.png";
+for (var i = 0; i < d.length; i++) {
+  if (d[i].screen === 0) continue;
+  var p = d[i].wallpaperPlugin, img = p === "org.kde.image" ? imagen(d[i]) : "";
+  if (p === "org.kde.image" && img !== "" && !/Win11OS|cachyos-wallpapers|\/wallpapers\/Next\//.test(img)) continue;
+  if (p !== "org.kde.image" && p !== "") continue;
+  d[i].wallpaperPlugin = "org.kde.image";
+  d[i].currentConfigGroup = ["Wallpaper", "org.kde.image", "General"];
+  d[i].writeConfig("Image", fondo);
+  d[i].writeConfig("PreviewImage", fondo);
+  n++;
+}
+print(n);' 2>/dev/null

@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Menú de arranque con el aspecto del de Windows en el sistema instalado (como root).
+
+  GRUB:   tema /usr/share/grub/themes/win11 en /etc/default/grub y grub-mkconfig
+  Limine: fondo azul, textos blancos y título "Elegir un sistema operativo" en limine.conf
+
+Lo ejecuta el instalador de la ISO después de instalar el gestor de arranque; también se puede
+ejecutar a mano (sudo win11-bootmenu). Nunca deja el arranque roto: ante un problema avisa y sale.
+"""
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+THEME = "/usr/share/grub/themes/win11/theme.txt"
+WALL = Path("/usr/share/kde-win11-boot/win11-limine.png")
+LIMINE_KEYS = ("term_palette", "term_palette_bright", "term_background", "term_foreground",
+               "term_background_bright", "term_foreground_bright", "interface_branding",
+               "interface_branding_colour", "interface_branding_color", "interface_help_hidden",
+               "interface_help_colour", "interface_help_color", "interface_help_colour_bright",
+               "interface_help_color_bright", "wallpaper", "wallpaper_style", "backdrop", "term_font_scale")
+LIMINE_THEME = """# Menú con el aspecto del de Windows (kde-win11, win11-bootmenu)
+term_palette: 0a58ab;ff99a4;d6e6f8;ffffff;cfe3fa;f5c2e7;bfe0ff;ffffff
+term_palette_bright: 3d7cc4;ffb3bb;e2eefc;ffffff;e2eefc;f9d5ee;d4eaff;ffffff
+term_background: ff0a58ab
+term_foreground: ffffff
+term_background_bright: 0a58ab
+term_foreground_bright: ffffff
+interface_branding: Elegir un sistema operativo
+interface_branding_colour: ffffff
+interface_help_hidden: yes
+term_font_scale: 2x2
+wallpaper: boot():/{wall}
+wallpaper_style: stretched
+backdrop: 0a58ab
+"""
+
+
+def grub():
+    cfg = Path("/boot/grub/grub.cfg")
+    default = Path("/etc/default/grub")
+    if not (cfg.exists() and default.exists() and shutil.which("grub-mkconfig")):
+        return
+    d = default.read_text()
+
+    def setkey(text, key, value):
+        line = f'{key}="{value}"'
+        text, n = re.subn(rf"(?m)^#?\s*{key}=.*$", line, text, count=1)
+        return text if n else text.rstrip("\n") + "\n" + line + "\n"
+
+    d = setkey(d, "GRUB_THEME", THEME)
+    d = setkey(d, "GRUB_GFXMODE", "auto")
+    d = re.sub(r"(?m)^(GRUB_TERMINAL_OUTPUT=.*console.*)$", r"#\1", d)   # el tema necesita gfxterm
+    default.write_text(d)
+    r = subprocess.run(["grub-mkconfig", "-o", str(cfg)], capture_output=True, text=True)
+    print("GRUB: tema Windows aplicado" if r.returncode == 0 else "GRUB: grub-mkconfig falló\n" + r.stderr)
+
+
+def limine_confs():
+    seen = set()
+    for base in ("/boot", "/efi", "/boot/efi"):
+        for c in list(Path(base).glob("limine.conf")) + list(Path(base).glob("*/limine.conf")) \
+                + list(Path(base).glob("EFI/*/limine.conf")):
+            if c.resolve() not in seen and c.is_file():
+                seen.add(c.resolve())
+                yield c
+
+
+def mountpoint(p):
+    r = subprocess.run(["findmnt", "-n", "-o", "TARGET", "-T", str(p)], capture_output=True, text=True)
+    return Path(r.stdout.strip() or "/")
+
+
+def limine():
+    if not WALL.exists():
+        return
+    for conf in limine_confs():
+        # boot():/ es la raíz de la partición donde está limine.conf
+        root = mountpoint(conf.parent)
+        shutil.copy(WALL, root / WALL.name)
+        lines = conf.read_text().split("\n")
+        # Solo las opciones globales: las que van antes de la primera entrada ("/…")
+        first = next((i for i, l in enumerate(lines) if l.lstrip().startswith("/")), len(lines))
+        head, rest = lines[:first], lines[first:]
+        keep = [l for l in head
+                if not re.match(r"\s*(" + "|".join(LIMINE_KEYS) + r")\s*:", l)
+                and not re.match(r"#\s*(CachyOS Limine theme|Author: diegons490|Menú con el aspecto del de Windows)", l)]
+        # Antes del "comment: machine-id" que identifica la instalación (o al final de la cabecera)
+        at = next((i for i, l in enumerate(keep) if l.startswith("comment: machine-id")), len(keep))
+        while at > 0 and not keep[at - 1].strip():   # sin acumular líneas vacías al repetir
+            at -= 1
+            keep.pop(at)
+        block = [""] + LIMINE_THEME.format(wall=WALL.name).rstrip("\n").split("\n") + [""]
+        conf.write_text("\n".join(keep[:at] + block + keep[at:] + rest))
+        print(f"Limine: tema Windows aplicado en {conf}")
+
+
+def main():
+    for step in (grub, limine):
+        try:
+            step()
+        except Exception as e:   # el arranque sigue funcionando con el aspecto anterior
+            print(f"win11-bootmenu: {step.__name__}: {e}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

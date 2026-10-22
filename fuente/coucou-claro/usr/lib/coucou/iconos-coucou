@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+# Coucou: los temas de iconos "Coucou" (claro) y "Coucou-Dark" (oscuro): los de Papirus con las
+# carpetas en violeta (como papirus-folders, pero sin tocar Papirus).
+#
+# En Papirus cada carpeta es un enlace a su versión azul (folder-download → folder-blue-download,
+# user-home → user-blue-home); aquí se arma, en cada tamaño, el mismo enlace a la violeta
+# (folder-violet-download, user-violet-home). Lo que no es carpeta sale de Papirus (Inherits).
+#
+# Lo corre el gancho de pacman coucou-iconos.hook al instalar o actualizar Papirus o Coucou. Si
+# nada cambió desde la última vez (la misma versión de Papirus y de este script), no hace nada:
+# armarlos lleva unos segundos y pasaba en cada actualización. Sin Papirus, quita los temas.
+#   iconos-coucou            arma si hace falta
+#   iconos-coucou --forzar   arma igual
+import hashlib
+import os
+import shutil
+import subprocess
+import sys
+
+PAP = "/usr/share/icons/Papirus"
+ICONS = "/usr/share/icons"
+COLOR = "violet"
+HUELLA = "/var/lib/coucou/iconos-coucou.huella"
+# Los lugares que no son carpetas, con el nombre que les puso el diseño de Windows 11 (kde-win11)
+OTROS = {"computer": "devices/computer", "network": "places/folder-violet-network", "user-trash": "places/user-trash",
+         "user-trash-full": "places/user-trash-full", "root": "devices/drive-harddisk-root"}
+
+
+def huella():
+    h = hashlib.sha256(open(__file__, "rb").read())
+    for f in (PAP + "/index.theme",):
+        st = os.stat(f)
+        h.update(f"{st.st_mtime_ns}:{st.st_size}".encode())
+    try:
+        h.update(subprocess.run(["pacman", "-Q", "papirus-icon-theme"], capture_output=True, text=True).stdout.encode())
+    except OSError:
+        pass
+    return h.hexdigest()
+
+
+def armar(nombre, visible, hereda):
+    dest = os.path.join(ICONS, nombre)
+    tmp = dest + ".coucou-nuevo"
+    shutil.rmtree(tmp, ignore_errors=True)
+    os.makedirs(tmp)
+    n = 0
+    for tam in sorted(os.listdir(PAP)):
+        places = os.path.join(PAP, tam, "places")
+        if os.path.islink(os.path.join(PAP, tam)) or not os.path.isdir(places):
+            continue
+        out = os.path.join(tmp, tam, "places")
+        os.makedirs(out)
+        hay = set(os.listdir(places))
+        for f in sorted(hay):
+            p = os.path.join(places, f)
+            if "-blue" in f or not os.path.islink(p):
+                continue                     # los "azules" de nombre siguen azules
+            azul = os.readlink(p)
+            if "-blue" not in azul:
+                continue
+            violeta = azul.replace("-blue", "-" + COLOR, 1)
+            if violeta not in hay:
+                continue
+            for n_ in (f, "win11-" + f):     # también con el nombre de Windows 11
+                os.symlink(os.path.join(places, violeta), os.path.join(out, n_))
+            n += 1
+        # Una carpeta cualquiera se pide como "inode-directory": Papirus no lo tiene (salía la de Breeze)
+        carpeta = os.path.join(out, "folder.svg")
+        if os.path.islink(carpeta):
+            os.symlink(os.readlink(carpeta), os.path.join(out, "inode-directory.svg"))
+        for corto, rel in OTROS.items():
+            orig = os.path.join(PAP, tam, rel + ".svg")
+            if os.path.exists(orig):
+                os.symlink(orig, os.path.join(out, "win11-" + corto + ".svg"))
+    # Los tamaños dobles (@2x) son enlaces a los simples, como en Papirus
+    for tam in os.listdir(PAP):
+        real = os.path.join(PAP, tam)
+        if os.path.islink(real) and os.path.isdir(real) and not os.path.lexists(os.path.join(tmp, tam)):
+            os.symlink(os.readlink(real), os.path.join(tmp, tam))
+    # El index.theme de Papirus (los mismos tamaños), con otro nombre y heredando de Papirus
+    idx = []
+    for l in open(PAP + "/index.theme", encoding="utf-8"):
+        if l.startswith("Name="):
+            l = f"Name={visible}\n"
+        elif l.startswith("Comment="):
+            l = "Comment=Papirus con las carpetas en violeta (Coucou)\n"
+        elif l.startswith("Inherits="):
+            l = f"Inherits={hereda},breeze,hicolor\n"
+        idx.append(l)
+    open(os.path.join(tmp, "index.theme"), "w", encoding="utf-8").writelines(idx)
+    shutil.rmtree(dest, ignore_errors=True)
+    os.rename(tmp, dest)
+    subprocess.run(["gtk-update-icon-cache", "-q", "-f", dest], stderr=subprocess.DEVNULL)
+    print(f"{nombre}: {n} carpetas en violeta")
+
+
+def main():
+    if not os.path.isfile(PAP + "/index.theme"):
+        for t in ("Coucou", "Coucou-Dark"):
+            shutil.rmtree(os.path.join(ICONS, t), ignore_errors=True)
+        try:
+            os.remove(HUELLA)
+        except OSError:
+            pass
+        print("sin Papirus: se quitan los iconos de Coucou (se usan los anteriores)")
+        return
+    h = huella()
+    hechos = all(os.path.isfile(os.path.join(ICONS, t, "index.theme")) for t in ("Coucou", "Coucou-Dark"))
+    if "--forzar" not in sys.argv and hechos:
+        try:
+            if open(HUELLA).read().strip() == h:
+                print("iconos de Coucou: al día")
+                return
+        except OSError:
+            pass
+    armar("Coucou", "Coucou", "Papirus")
+    armar("Coucou-Dark", "Coucou oscuro", "Papirus-Dark")
+    os.makedirs(os.path.dirname(HUELLA), exist_ok=True)
+    open(HUELLA, "w").write(h + "\n")
+
+
+if __name__ == "__main__":
+    main()

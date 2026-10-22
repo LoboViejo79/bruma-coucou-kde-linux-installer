@@ -1,0 +1,23 @@
+#!/bin/sh
+# Coucou: DisplayCommand de SDDM (corre apenas arranca X). Oculta el cursor hasta
+# que la pantalla de bloqueo ya se ve entera (o el escritorio, si no hay
+# bloqueo), así el paso splash -> login queda limpio. Después sigue el Xsetup normal.
+(
+    /usr/lib/coucou/hide-cursor &
+    hc=$!
+    i=0 desk=0
+    while [ $i -lt 75 ]; do
+        if pgrep -x kscreenlocker_greet >/dev/null; then
+            sleep 2      # carga del QML + fundido de entrada (700 ms) + respiro
+            break
+        fi
+        if pgrep -x plasmashell >/dev/null; then
+            desk=$((desk + 1))
+            [ $desk -ge 12 ] && break   # 2,4 s de escritorio sin bloqueo
+        fi
+        sleep 0.2
+        i=$((i + 1))
+    done
+    kill $hc 2>/dev/null
+) >/dev/null 2>&1 &
+exec /usr/share/sddm/scripts/Xsetup

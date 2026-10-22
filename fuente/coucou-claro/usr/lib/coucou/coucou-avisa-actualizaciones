@@ -1,0 +1,29 @@
+#!/bin/bash
+# Coucou: avisa, sin molestar, cuántas actualizaciones del sistema hay.
+#  - Una notificación discreta (sin sonido) con la cantidad de paquetes, y nada más.
+#  - Solo cuando hay más que la última vez que avisó (no repite el mismo aviso).
+#  - Se activa o desactiva en Configuración › Actualizaciones (~/.config/coucou/avisar-actualizaciones: on/off).
+# La corre el temporizador coucou-actualizaciones.timer (a los 10 minutos de entrar y cada 3 horas).
+CFG=${XDG_CONFIG_HOME:-$HOME/.config}/coucou
+EST=${XDG_STATE_HOME:-$HOME/.local/state}/coucou
+mkdir -p "$EST"
+command -v checkupdates >/dev/null || exit 0
+n=$(checkupdates 2>/dev/null | grep -c .)
+nf=0
+command -v flatpak >/dev/null && nf=$(flatpak remote-ls --updates --columns=application 2>/dev/null | grep -c .)
+total=$((n + nf))
+# Lo que hay pendiente, para Configuración › Inicio
+echo "$total" > "$EST/actualizaciones-pendientes"
+# Aviso apagado en Configuración › Actualizaciones: solo se cuenta, no se avisa
+[ "$(cat "$CFG/avisar-actualizaciones" 2>/dev/null)" = off ] && exit 0
+antes=$(cat "$EST/actualizaciones-avisadas" 2>/dev/null || echo 0)
+# Menos que antes (se instalaron): se recuerda el número nuevo, sin avisar
+if [ "$total" -le "$antes" ]; then echo "$total" > "$EST/actualizaciones-avisadas"; exit 0; fi
+# "No molestar" activado: no avisa ahora (avisa en la próxima revisión, cuando ya no esté)
+gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications \
+  --method org.freedesktop.DBus.Properties.Get org.freedesktop.Notifications Inhibited 2>/dev/null | grep -q true && exit 0
+echo "$total" > "$EST/actualizaciones-avisadas"
+if [ "$total" = 1 ]; then t="Hay 1 actualización"; else t="Hay $total actualizaciones"; fi
+d="Instálalas cuando quieras desde Configuración › Actualizaciones."
+notify-send -a "Actualizaciones" -i system-software-update -u low -h boolean:suppress-sound:true \
+  -h string:desktop-entry:win11-settings "$t" "$d" 2>/dev/null

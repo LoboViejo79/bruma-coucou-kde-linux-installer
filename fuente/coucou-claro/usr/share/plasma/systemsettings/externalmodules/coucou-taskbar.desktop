@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Service
+TryExec=win11-settings
+Exec=win11-settings "personalization/Barra de tareas"
+Icon=preferences-desktop
+X-KDE-ServiceTypes=SystemSettingsExternalApp
+X-KDE-System-Settings-Parent-Category=personalization
+X-KDE-Weight=60
+Name=Taskbar
+Name[es]=Barra de tareas
+Comment=Coucou or original CachyOS bar
+Comment[es]=Barra de Coucou o la original de CachyOS
+X-KDE-Keywords=taskbar,panel,bar,coucou
+X-KDE-Keywords[es]=barra de tareas,panel,barra,coucou

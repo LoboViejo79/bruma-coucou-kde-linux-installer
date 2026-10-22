@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Modo juego
+Comment=Más rendimiento para jugar: pausa lo de fondo y limpia la memoria (otra vez: vuelve todo)
+Exec=/usr/lib/coucou/modo-juego alternar
+Icon=applications-games
+Categories=Game;System;
+Keywords=juego;game;gaming;ram;rendimiento;memoria;

@@ -1,0 +1,7 @@
+[Unit]
+Description=Coucou: aviso discreto de actualizaciones del sistema
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/coucou/coucou-avisa-actualizaciones
+Nice=10

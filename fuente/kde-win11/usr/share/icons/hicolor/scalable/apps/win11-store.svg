@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 48 48">
+  <!-- Icono de la Tienda de Coucou: bolsa violeta con un destello -->
+  <defs>
+    <linearGradient id="body" x1="8" y1="14" x2="40" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#6D28D9"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="24" y1="3" x2="24" y2="16" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#5B21B6"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="24" y1="14" x2="24" y2="26" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- asa -->
+  <path d="M16.5 17V12a7.5 7.5 0 0 1 15 0v5" fill="none" stroke="url(#handle)" stroke-width="3" stroke-linecap="round"/>
+  <!-- cuerpo -->
+  <path d="M9.6 14h28.8a2 2 0 0 1 2 1.86l1.5 21.4A6 6 0 0 1 35.9 43.7H12.1a6 6 0 0 1-6-6.44l1.5-21.4A2 2 0 0 1 9.6 14Z" fill="url(#body)"/>
+  <!-- brillo arriba -->
+  <path d="M9.6 14h28.8a2 2 0 0 1 2 1.86l.6 8.14H7l.6-8.14A2 2 0 0 1 9.6 14Z" fill="url(#shine)"/>
+  <!-- agujeros del asa -->
+  <circle cx="16.5" cy="18.5" r="1.5" fill="#4C1D95" opacity="0.55"/>
+  <circle cx="31.5" cy="18.5" r="1.5" fill="#4C1D95" opacity="0.55"/>
+  <!-- destello -->
+  <path d="M24 23.5c.7 4 2.5 5.8 6.5 6.5-4 .7-5.8 2.5-6.5 6.5-.7-4-2.5-5.8-6.5-6.5 4-.7 5.8-2.5 6.5-6.5Z" fill="#FFFFFF"/>
+  <circle cx="31.5" cy="25" r="1.1" fill="#FFFFFF" opacity="0.85"/>
+</svg>

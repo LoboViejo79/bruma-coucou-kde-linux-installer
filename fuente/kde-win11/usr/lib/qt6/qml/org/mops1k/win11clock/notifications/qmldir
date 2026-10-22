@@ -1,0 +1,32 @@
+module org.mops1k.win11clock.notifications
+linktarget win11clocknotificationsplugin
+optional plugin win11clocknotificationsplugin
+classname org_mops1k_win11clock_notificationsPlugin
+typeinfo win11clocknotifications.qmltypes
+prefer :/org/mops1k/win11clock/notifications/
+NotificationPopup 1.0 NotificationPopup.qml
+DraggableDelegate 1.0 DraggableDelegate.qml
+BaseDelegate 1.0 delegates/BaseDelegate.qml
+DelegateHistory 1.0 delegates/DelegateHistory.qml
+DelegateHistoryGrouped 1.0 delegates/DelegateHistoryGrouped.qml
+DelegatePopup 1.0 delegates/DelegatePopup.qml
+ActionContainer 1.0 components/ActionContainer.qml
+Body 1.0 components/Body.qml
+DraggableFileArea 1.0 components/DraggableFileArea.qml
+EditContextMenu 1.0 components/EditContextMenu.qml
+FooterLoader 1.0 components/FooterLoader.qml
+HeadingButtons 1.0 components/HeadingButtons.qml
+Icon 1.0 components/Icon.qml
+JobDetails 1.0 components/JobDetails.qml
+JobIconItem 1.0 components/JobIconItem.qml
+JobItem 1.0 components/JobItem.qml
+ModelInterface 1.0 components/ModelInterface.qml
+NotificationHeader 1.0 components/NotificationHeader.qml
+NotificationReplyField 1.0 components/NotificationReplyField.qml
+SpeedChart 1.0 components/SpeedChart.qml
+Summary 1.0 components/Summary.qml
+ThumbnailStrip 1.0 components/ThumbnailStrip.qml
+singleton Globals 1.0 global/Globals.qml
+PulseAudio 1.0 global/PulseAudio.qml
+depends QtQuick
+

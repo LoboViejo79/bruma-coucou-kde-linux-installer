@@ -1,0 +1,12 @@
+{
+    "KPlugin": {
+        "Id": "win11-osd",
+        "Name": "Avisos de volumen estilo Windows 11",
+        "Description": "Coloca los avisos de volumen y brillo centrados justo encima de la barra de tareas",
+        "License": "GPL",
+        "EnabledByDefault": true
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js",
+    "KPackageStructure": "KWin/Script"
+}

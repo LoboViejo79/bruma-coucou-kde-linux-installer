@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="estilo" type="String"><default>coucou</default></entry>
+    <entry name="imagen" type="String"><default></default></entry>
+    <entry name="pregunta" type="String"><default>¿Cómo estás hoy?</default></entry>
+    <entry name="eleccion" type="Int"><default>-1</default></entry>
+    <entry name="dia" type="String"><default></default></entry>
+  </group>
+</kcfg>

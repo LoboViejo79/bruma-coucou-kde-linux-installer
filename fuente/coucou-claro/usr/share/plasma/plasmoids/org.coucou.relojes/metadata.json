@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Coucou"
+            }
+        ],
+        "Category": "Date and Time",
+        "Description": "La hora en tres lugares del mundo, con su nombre",
+        "Icon": "clock",
+        "Id": "org.coucou.relojes",
+        "License": "GPL-2.0+",
+        "Name": "Coucou: Relojes del mundo",
+        "Version": "1.0",
+        "Website": "https://github.com/Louis-CFM/coucou"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

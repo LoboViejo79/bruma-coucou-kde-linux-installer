@@ -1,0 +1,11 @@
+# Registros de instalación (tienen datos del equipo)
+*.log
+
+# Lo que arma fuente/construir.sh
+fuente/.construido/
+paquetes/.*
+*.zip
+
+# Carpetas de compilación y archivos del explorador
+build/
+.directory

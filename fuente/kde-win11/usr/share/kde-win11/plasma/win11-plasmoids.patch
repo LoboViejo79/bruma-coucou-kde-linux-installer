@@ -1,0 +1,1744 @@
+diff --git a/win11clock/contents/ui/CompactRepresentation.qml b/win11clock/contents/ui/CompactRepresentation.qml
+index 1496760..2905ad7 100644
+--- a/win11clock/contents/ui/CompactRepresentation.qml
++++ b/win11clock/contents/ui/CompactRepresentation.qml
+@@ -141,7 +141,7 @@ MouseArea {
+                     visible: root.showDate
+                     text: root.dateText
+                     color: root.textColor
+-                    opacity: 0.75
++                    opacity: 1 // kde-win11: fecha en blanco, como la hora (Windows 11)
+                     font.family: root.textFontFamily
+                     font.pixelSize: Plasmoid.configuration.dateFontSizePt > 0 ? Plasmoid.configuration.dateFontSizePt : root.autoDateSize
+                 }
+@@ -155,7 +155,8 @@ MouseArea {
+                 Layout.alignment: Qt.AlignVCenter
+                 Layout.preferredWidth: Math.round(root.autoDateSize * 1.5)
+                 Layout.preferredHeight: Math.round(root.autoDateSize * 1.5)
+-                visible: root.dndEnabled
++                // kde-win11: la campana se ve siempre, como en Windows 11; la «z» solo con No molestar
++                visible: true
+ 
+                 Kirigami.Icon {
+                     anchors.fill: parent
+@@ -170,6 +171,7 @@ MouseArea {
+                     anchors.rightMargin: -Math.round(root.autoDateSize * 0.15)
+                     anchors.bottomMargin: -Math.round(root.autoDateSize * 0.1)
+                     text: "z"
++                    visible: root.dndEnabled
+                     color: root.textColor
+                     font.pixelSize: Math.round(root.autoDateSize * 0.85)
+                     font.bold: true
+diff --git a/win11tray/CMakeLists.txt b/win11tray/CMakeLists.txt
+index a8a3e00..fd49b38 100644
+--- a/win11tray/CMakeLists.txt
++++ b/win11tray/CMakeLists.txt
+@@ -215,6 +215,7 @@ ecm_target_qml_sources(org.mops1k.win11tray
+         ${CMAKE_CURRENT_SOURCE_DIR}/contents/ui/components/NotificationsPage.qml
+         ${CMAKE_CURRENT_SOURCE_DIR}/contents/ui/components/DeviceNotifierPage.qml
+         ${CMAKE_CURRENT_SOURCE_DIR}/contents/ui/components/MediaControllerPage.qml
++        ${CMAKE_CURRENT_SOURCE_DIR}/contents/ui/components/MediaCard.qml
+ )
+ ecm_target_qml_sources(org.mops1k.win11tray
+     PATH components/volume
+diff --git a/win11tray/contents/ui/ActionPanel.qml b/win11tray/contents/ui/ActionPanel.qml
+index 4f9556d..dc63782 100644
+--- a/win11tray/contents/ui/ActionPanel.qml
++++ b/win11tray/contents/ui/ActionPanel.qml
+@@ -8,8 +8,10 @@ pragma ComponentBehavior: Bound
+ 
+ import QtQuick
+ import QtQuick.Layouts
++import org.kde.kirigami as Kirigami
+ 
+ import org.kde.plasma.plasmoid
++import org.kde.plasma.core as PlasmaCore
+ 
+ import "components" as Components
+ 
+@@ -23,13 +25,89 @@ ColumnLayout {
+     Layout.fillWidth: true
+     spacing: 16 * actionPanel.scale
+ 
+-    GridLayout {
++    // kde-win11: tarjeta multimedia en su propia ventana, separada y encima de los ajustes rápidos,
++    // como en Windows 11. Aparece sola cuando algo se reproduce. No acepta el foco: pulsar sus
++    // botones no cierra los ajustes rápidos.
++    PlasmaCore.Dialog {
++        id: mediaWindow
++        // Colocada a mano: mismo ancho y borde izquierdo que la ventana de los ajustes rápidos y
++        // 12 px por encima (pegada por visualParent no queda separada como en Windows 11)
++        readonly property var quickWindow: actionPanel.Window.window
++        location: PlasmaCore.Types.Floating
++        x: quickWindow ? quickWindow.x : 0
++        y: quickWindow ? quickWindow.y - height - 12 : 0
++        flags: Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
++        hideOnWindowDeactivate: false
++        visible: systemTrayState.expanded && systemTrayState.quickSettings
++                 && systemTrayState.activePage === "" && mediaCard.player !== null
++        mainItem: Components.MediaCard {
++            id: mediaCard
++            width: (mediaWindow.quickWindow ? mediaWindow.quickWindow.width : actionPanel.width)
++                   - mediaWindow.margins.left - mediaWindow.margins.right
++            scale: actionPanel.scale
++            framed: false
++            onOpenPage: actionPanel.requestPage("mediacontroller")
++        }
++    }
++
++    // kde-win11: como en Windows 11 se ven 6 plantillas (2 filas); el resto se ve desplazando con
++    // la rueda o arrastrando, página a página, con los puntos de página a la derecha.
++    RowLayout {
++        id: tilesArea
+         Layout.fillWidth: true
+         Layout.leftMargin: 14 * actionPanel.scale
+-        Layout.rightMargin: 14 * actionPanel.scale
++        Layout.rightMargin: 4 * actionPanel.scale
+         Layout.topMargin: 6 * actionPanel.scale
+-        columns: 3
+-        rowSpacing: 12 * actionPanel.scale
++        spacing: 2 * actionPanel.scale
++
++        readonly property int columns: 3
++        readonly property real rowSpacing: 12 * actionPanel.scale
++        readonly property int visibleTiles: {
++            let n = 0;
++            for (let i = 0; i < tilesGrid.children.length; i++) {
++                if (tilesGrid.children[i].visible) n++;
++            }
++            return n;
++        }
++        readonly property int rows: Math.max(1, Math.ceil(visibleTiles / columns))
++        readonly property real rowStep: (tilesGrid.implicitHeight + rowSpacing) / rows
++        readonly property int pages: Math.max(1, Math.ceil(rows / 2))
++        readonly property real pageStep: 2 * rowStep
++        property int page: 0
++
++        function goTo(p) {
++            page = Math.max(0, Math.min(pages - 1, p));
++            tilesFlick.contentY = page * pageStep; // también ajusta tras arrastrar
++        }
++
++        Flickable {
++            id: tilesFlick
++            Layout.fillWidth: true
++            Layout.preferredHeight: Math.min(tilesGrid.implicitHeight, tilesArea.pageStep - tilesArea.rowSpacing)
++            clip: true
++            contentWidth: width
++            contentHeight: tilesArea.pages * tilesArea.pageStep
++            boundsBehavior: Flickable.StopAtBounds
++            interactive: tilesArea.pages > 1
++            Behavior on contentY {
++                NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
++            }
++            // Al soltar tras arrastrar, ajusta a la página más cercana
++            onMovementEnded: tilesArea.goTo(Math.round(contentY / tilesArea.pageStep))
++
++            WheelHandler {
++                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
++                onWheel: event => {
++                    if (event.angleDelta.y < 0) tilesArea.goTo(tilesArea.page + 1);
++                    else if (event.angleDelta.y > 0) tilesArea.goTo(tilesArea.page - 1);
++                }
++            }
++
++    GridLayout {
++        id: tilesGrid
++        width: tilesFlick.width
++        columns: tilesArea.columns
++        rowSpacing: tilesArea.rowSpacing
+         columnSpacing: 6 * actionPanel.scale
+ 
+         Components.NetworkToggle {
+@@ -77,6 +155,44 @@ ColumnLayout {
+             onArrowClicked: actionPanel.requestPage("display")
+         }
+     }
++        }
++
++        // Puntos de página (y flecha a la siguiente), como en Windows 11
++        ColumnLayout {
++            Layout.alignment: Qt.AlignVCenter
++            Layout.preferredWidth: 10 * actionPanel.scale
++            visible: tilesArea.pages > 1
++            spacing: 6 * actionPanel.scale
++            Repeater {
++                model: tilesArea.pages
++                Rectangle {
++                    required property int index
++                    Layout.alignment: Qt.AlignHCenter
++                    width: 5 * actionPanel.scale
++                    height: width
++                    radius: width / 2
++                    color: Kirigami.Theme.textColor
++                    opacity: index === tilesArea.page ? 0.9 : 0.35
++                    MouseArea {
++                        anchors.fill: parent
++                        anchors.margins: -4
++                        onClicked: tilesArea.goTo(parent.index)
++                    }
++                }
++            }
++            Kirigami.Icon {
++                Layout.alignment: Qt.AlignHCenter
++                Layout.preferredWidth: 10 * actionPanel.scale
++                Layout.preferredHeight: 10 * actionPanel.scale
++                source: tilesArea.page < tilesArea.pages - 1 ? "arrow-down" : "arrow-up"
++                MouseArea {
++                    anchors.fill: parent
++                    anchors.margins: -4
++                    onClicked: tilesArea.goTo(tilesArea.page < tilesArea.pages - 1 ? tilesArea.page + 1 : 0)
++                }
++            }
++        }
++    }
+ 
+     GridLayout {
+         Layout.fillWidth: true
+@@ -104,4 +220,13 @@ ColumnLayout {
+             onArrowClicked: actionPanel.requestPage("volume")
+         }
+     }
++
++    // kde-win11: pie como Windows 11: batería (si hay), apagar y Configuración
++    Components.Footer {
++        Layout.fillWidth: true
++        Layout.topMargin: -8 * actionPanel.scale
++        scale: actionPanel.scale
++        showBattery: Plasmoid.configuration.showBattery
++        onBatteryClicked: actionPanel.requestPage("battery")
++    }
+ }
+diff --git a/win11tray/contents/ui/ExpandedRepresentation.qml b/win11tray/contents/ui/ExpandedRepresentation.qml
+index 6f5f3dc..024daf6 100644
+--- a/win11tray/contents/ui/ExpandedRepresentation.qml
++++ b/win11tray/contents/ui/ExpandedRepresentation.qml
+@@ -40,7 +40,7 @@ Item {
+                  : quickSettingsMode ? quickSettingsWidth
+                  : appletPopupSize
+     implicitHeight: gridMode ? hiddenItemsView.gridContentHeight
+-                  : quickSettingsMode ? Math.max(appletPopupSize, quickSettingsLoader.implicitHeight)
++                  : quickSettingsMode ? Math.max(Kirigami.Units.gridUnit * 12, quickSettingsLoader.implicitHeight) // kde-win11: alto justo
+                   : appletPopupSize
+ 
+     width: implicitWidth
+diff --git a/win11tray/contents/ui/SystemTrayState.qml b/win11tray/contents/ui/SystemTrayState.qml
+index bc639d9..a43a231 100644
+--- a/win11tray/contents/ui/SystemTrayState.qml
++++ b/win11tray/contents/ui/SystemTrayState.qml
+@@ -165,7 +165,13 @@ QtObject {
+         target: Plasmoid
+         //emitted when activation is requested, for example by using a global keyboard shortcut
+         function onActivated() {
+-            systemTrayState.acceptExpandedChange = true
++            // kde-win11: el atajo (Win+A) abre o cierra los ajustes rápidos, como en Windows 11,
++            // en lugar de la cuadrícula de iconos ocultos
++            if (systemTrayState.expanded && systemTrayState.quickSettings) {
++                systemTrayState.expanded = false
++            } else {
++                systemTrayState.openQuickSettings()
++            }
+         }
+     }
+ 
+diff --git a/win11tray/contents/ui/components/Footer.qml b/win11tray/contents/ui/components/Footer.qml
+index 004a206..1412133 100644
+--- a/win11tray/contents/ui/components/Footer.qml
++++ b/win11tray/contents/ui/components/Footer.qml
+@@ -55,7 +55,7 @@ Rectangle {
+             buttonSize: 22
+             anchors.left: parent.left
+             anchors.verticalCenter: parent.verticalCenter
+-            visible: footer.showBattery && footer.hasBattery
++            visible: footer.showBattery && (footer.hasBattery || batteryControl.hasBatteries)
+             iconSource: batteryControl.state === BatteryControlModel.Charging ? "battery-100-charging" : "battery-100"
+             tooltipText: footer.batteryTooltipText
+             onClicked: footer.batteryClicked()
+diff --git a/win11tray/contents/ui/components/MediaCard.qml b/win11tray/contents/ui/components/MediaCard.qml
+new file mode 100644
+index 0000000..774fc38
+--- /dev/null
++++ b/win11tray/contents/ui/components/MediaCard.qml
+@@ -0,0 +1,129 @@
++/*
++    MediaCard — tarjeta multimedia encima de los ajustes rápidos, como en Windows 11
++    (kde-win11): app que reproduce y ">", título y artista con la carátula a la
++    derecha, y anterior / reproducir-pausa / siguiente. Solo se ve si hay un
++    reproductor MPRIS (navegador, Spotify, Haruna…).
++*/
++import QtQuick
++import QtQuick.Layouts
++import org.kde.plasma.private.mpris as Mpris
++import org.kde.kirigami as Kirigami
++import org.kde.plasma.components as PlasmaComponents3
++
++Rectangle {
++    id: card
++
++    property real scale: 1
++    // false: sin fondo ni borde propios (dentro de su propia ventana, que ya pone el fondo)
++    property bool framed: true
++    signal openPage()
++
++    Mpris.Mpris2Model {
++        id: mprisModel
++    }
++
++    // Reproductor actual (el que suena; si ninguno, el último usado) o null si no hay ninguno
++    readonly property var player: mprisModel.currentPlayer ?? null
++    readonly property bool playing: player !== null && player.playbackStatus === Mpris.PlaybackStatus.Playing
++
++    implicitHeight: col.implicitHeight + 24 * scale
++    radius: 8
++    color: framed ? Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.05) : "transparent"
++    border.width: framed ? 1 : 0
++    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.08)
++
++    ColumnLayout {
++        id: col
++        anchors.fill: parent
++        anchors.margins: 12 * card.scale
++        spacing: 10 * card.scale
++
++        // App que reproduce y ">" (abre la página multimedia)
++        RowLayout {
++            Layout.fillWidth: true
++            spacing: 8
++            Kirigami.Icon {
++                Layout.preferredWidth: 16
++                Layout.preferredHeight: 16
++                // Icono de la app (p. ej. el de Firefox) por su .desktop; si no, el del reproductor
++                source: card.player ? (card.player.desktopEntry || card.player.iconName || "media-playback-start") : ""
++            }
++            PlasmaComponents3.Label {
++                Layout.fillWidth: true
++                text: card.player ? card.player.identity : ""
++                font.pixelSize: 12
++                elide: Text.ElideRight
++            }
++            PlasmaComponents3.ToolButton {
++                icon.name: "go-next"
++                display: PlasmaComponents3.AbstractButton.IconOnly
++                text: i18n("Media")
++                onClicked: card.openPage()
++            }
++        }
++
++        // Título y artista; carátula a la derecha
++        RowLayout {
++            Layout.fillWidth: true
++            spacing: 10
++            ColumnLayout {
++                Layout.fillWidth: true
++                spacing: 2
++                PlasmaComponents3.Label {
++                    Layout.fillWidth: true
++                    text: card.player ? (card.player.track || i18n("Unknown track")) : ""
++                    font.pixelSize: 14
++                    font.weight: Font.DemiBold
++                    elide: Text.ElideRight
++                }
++                PlasmaComponents3.Label {
++                    Layout.fillWidth: true
++                    text: card.player ? (card.player.artist || "") : ""
++                    visible: text.length > 0
++                    opacity: 0.7
++                    font.pixelSize: 12
++                    elide: Text.ElideRight
++                }
++            }
++            Image {
++                Layout.preferredWidth: 64 * card.scale
++                Layout.preferredHeight: 40 * card.scale
++                visible: card.player !== null && !!card.player.artUrl && String(card.player.artUrl).length > 0
++                source: card.player ? card.player.artUrl : ""
++                fillMode: Image.PreserveAspectCrop
++                layer.enabled: true
++                layer.effect: Kirigami.ShadowedTexture { radius: 4 }
++            }
++        }
++
++        // Controles
++        RowLayout {
++            Layout.alignment: Qt.AlignHCenter
++            spacing: 24 * card.scale
++            PlasmaComponents3.ToolButton {
++                icon.name: "media-skip-backward"
++                icon.width: 20; icon.height: 20
++                display: PlasmaComponents3.AbstractButton.IconOnly
++                text: i18n("Previous")
++                enabled: card.player !== null && card.player.canGoPrevious
++                onClicked: card.player.Previous()
++            }
++            PlasmaComponents3.ToolButton {
++                icon.name: card.playing ? "media-playback-pause" : "media-playback-start"
++                icon.width: 24; icon.height: 24
++                display: PlasmaComponents3.AbstractButton.IconOnly
++                text: card.playing ? i18n("Pause") : i18n("Play")
++                enabled: card.player !== null && (card.player.canPlay || card.player.canPause)
++                onClicked: card.playing ? card.player.Pause() : card.player.Play()
++            }
++            PlasmaComponents3.ToolButton {
++                icon.name: "media-skip-forward"
++                icon.width: 20; icon.height: 20
++                display: PlasmaComponents3.AbstractButton.IconOnly
++                text: i18n("Next")
++                enabled: card.player !== null && card.player.canGoNext
++                onClicked: card.player.Next()
++            }
++        }
++    }
++}
+diff --git a/win11tray/contents/ui/components/MediaControllerPage.qml b/win11tray/contents/ui/components/MediaControllerPage.qml
+index b5111b9..e5b9945 100644
+--- a/win11tray/contents/ui/components/MediaControllerPage.qml
++++ b/win11tray/contents/ui/components/MediaControllerPage.qml
+@@ -28,14 +28,8 @@ Lib.Page {
+     }
+ 
+     // The active player (first one that's playing, or first available)
+-    readonly property var activePlayer: {
+-        for (var i = 0; i < mprisModel.count; i++) {
+-            var p = mprisModel.get(i)
+-            if (p && p.playbackStatus === Mpris.PlaybackStatus.Playing)
+-                return p
+-        }
+-        return mprisModel.count > 0 ? mprisModel.get(0) : null
+-    }
++    // kde-win11: Mpris2Model no tiene get()/count: el reproductor actual es currentPlayer
++    readonly property var activePlayer: mprisModel.currentPlayer ?? null
+ 
+     ColumnLayout {
+         Layout.fillWidth: true
+@@ -104,7 +98,7 @@ Lib.Page {
+ 
+                             PlasmaComponents3.Label {
+                                 Layout.fillWidth: true
+-                                text: page.activePlayer ? (page.activePlayer.title || i18n("Unknown track")) : ""
++                                text: page.activePlayer ? (page.activePlayer.track || i18n("Unknown track")) : ""
+                                 color: Kirigami.Theme.textColor
+                                 font.pixelSize: 12
+                                 font.bold: true
+@@ -122,7 +116,7 @@ Lib.Page {
+ 
+                             PlasmaComponents3.Label {
+                                 Layout.fillWidth: true
+-                                text: page.activePlayer ? page.activePlayer.instanceName : ""
++                                text: page.activePlayer ? (page.activePlayer.identity || "") : "" // kde-win11: instanceName no existe
+                                 color: Kirigami.Theme.textColor
+                                 opacity: 0.3
+                                 font.pixelSize: 9
+@@ -157,7 +151,7 @@ Lib.Page {
+                                 anchors.fill: parent
+                                 cursorShape: Qt.PointingHandCursor
+                                 enabled: page.activePlayer && page.activePlayer.canGoPrevious
+-                                onClicked: page.activePlayer.GoPrevious()
++                                onClicked: page.activePlayer.Previous()
+                             }
+                         }
+ 
+@@ -217,7 +211,7 @@ Lib.Page {
+                                 anchors.fill: parent
+                                 cursorShape: Qt.PointingHandCursor
+                                 enabled: page.activePlayer && page.activePlayer.canGoNext
+-                                onClicked: page.activePlayer.GoNext()
++                                onClicked: page.activePlayer.Next()
+                             }
+                         }
+ 
+diff --git a/win11tray/po/es/plasma_applet_org.mops1k.win11tray.po b/win11tray/po/es/plasma_applet_org.mops1k.win11tray.po
+new file mode 100644
+index 0000000..3bb509d
+--- /dev/null
++++ b/win11tray/po/es/plasma_applet_org.mops1k.win11tray.po
+@@ -0,0 +1,922 @@
++msgid ""
++msgstr ""
++"Project-Id-Version: win11tray\n"
++"Language: es\n"
++"MIME-Version: 1.0\n"
++"Content-Type: text/plain; charset=UTF-8\n"
++"Content-Transfer-Encoding: 8bit\n"
++"Plural-Forms: nplurals=2; plural=n != 1;\n"
++
++#: contents/ui/BackgroundAppItem.qml:76
++msgctxt "@action:inmenu"
++msgid "Quit %1"
++msgstr "Salir de %1"
++
++#: contents/ui/ConfigGeneral.qml:53
++msgctxt "@item:inlistbox Show this System Tray item when relevant"
++msgid "Show when relevant"
++msgstr "Mostrar cuando sea relevante"
++
++#: contents/ui/ConfigGeneral.qml:57
++msgctxt "@item:inlistbox Always show this System Tray item"
++msgid "Always show"
++msgstr "Mostrar siempre"
++
++#: contents/ui/ConfigGeneral.qml:61
++msgctxt "@item:inlistbox Show this System Tray item only in the expanded popup"
++msgid "Show only in popup"
++msgstr "Mostrar solo en los iconos ocultos"
++
++#: contents/ui/ConfigGeneral.qml:65
++msgctxt "@item:inlistbox Never show this System Tray item; disable it"
++msgid "Never show (disabled)"
++msgstr "No mostrar nunca (desactivado)"
++
++#: contents/ui/ConfigGeneral.qml:136
++msgid "Application Status"
++msgstr "Estado de aplicaciones"
++
++#: contents/ui/ConfigGeneral.qml:138
++msgid "Communications"
++msgstr "Comunicaciones"
++
++#: contents/ui/ConfigGeneral.qml:140
++msgid "System Services"
++msgstr "Servicios del sistema"
++
++#: contents/ui/ConfigGeneral.qml:142
++msgid "Hardware Control"
++msgstr "Control del hardware"
++
++#: contents/ui/ConfigGeneral.qml:145
++msgid "Miscellaneous"
++msgstr "Varios"
++
++#: contents/ui/ConfigGeneral.qml:185
++msgctxt "@action:button"
++msgid "I understand the risks"
++msgstr "Entiendo los riesgos"
++
++#: contents/ui/ConfigGeneral.qml:218
++msgctxt "@item:inlistbox Icon size"
++msgid "Scale with Panel height"
++msgstr "Escalar con la altura del panel"
++
++#: contents/ui/ConfigGeneral.qml:219
++msgctxt "@item:inlistbox Icon size"
++msgid "Scale with Panel width"
++msgstr "Escalar con el ancho del panel"
++
++#: contents/ui/ConfigGeneral.qml:221
++msgctxt ""
++"@label:listbox Whether the system tray icons in the Panel always stay small "
++"or scale with the Panel's size"
++msgid "Panel icon size:"
++msgstr "Tamaño de los iconos del panel:"
++
++#: contents/ui/ConfigGeneral.qml:225
++msgctxt "@item:inlistbox Icon size"
++msgid "Small (22 px)"
++msgstr "Pequeño (22 px)"
++
++#: contents/ui/ConfigGeneral.qml:233
++msgctxt "@item:inlistbox Icon size"
++msgid "Custom size in pixels"
++msgstr "Tamaño personalizado en píxeles"
++
++#: contents/ui/ConfigGeneral.qml:255
++msgctxt "@label:spinbox Custom tray icon size in pixels"
++msgid "Icon size (px):"
++msgstr "Tamaño del icono (px):"
++
++#: contents/ui/ConfigGeneral.qml:268
++msgctxt "@label:listbox The spacing between system tray icons in the Panel"
++msgid "Spacing:"
++msgstr "Espaciado:"
++
++#: contents/ui/ConfigGeneral.qml:272
++msgctxt "@item:inlistbox Icon spacing"
++msgid "Small"
++msgstr "Pequeño"
++
++#: contents/ui/ConfigGeneral.qml:276
++msgctxt "@item:inlistbox Icon spacing"
++msgid "Normal"
++msgstr "Normal"
++
++#: contents/ui/ConfigGeneral.qml:280
++msgctxt "@item:inlistbox Icon spacing"
++msgid "Large"
++msgstr "Grande"
++
++#: contents/ui/ConfigGeneral.qml:300
++msgctxt ""
++"@label:spinbox Maximum number of tray icons shown in the panel; the rest go "
++"to the hidden icons popup"
++msgid "Max icons in panel:"
++msgstr "Máximo de iconos en la barra:"
++
++#: contents/ui/ConfigGeneral.qml:307 contents/ui/ConfigGeneral.qml:309
++msgctxt "@item:inlistbox Unlimited number of tray icons"
++msgid "Unlimited"
++msgstr "Sin límite"
++
++#: contents/ui/ConfigGeneral.qml:320
++msgctxt ""
++"@label:listbox Which direction system tray icons in the Panel emerge from "
++"the expander arrow"
++msgid "Direction:"
++msgstr "Dirección:"
++
++#: contents/ui/ConfigGeneral.qml:334
++msgid "Bottom-to-top"
++msgstr "De abajo arriba"
++
++#: contents/ui/ConfigGeneral.qml:335
++msgid "Top-to-bottom"
++msgstr "De arriba abajo"
++
++#: contents/ui/ConfigGeneral.qml:340 contents/ui/ConfigGeneral.qml:347
++msgid "Left-to-right"
++msgstr "De izquierda a derecha"
++
++#: contents/ui/ConfigGeneral.qml:341 contents/ui/ConfigGeneral.qml:346
++msgid "Right-to-left"
++msgstr "De derecha a izquierda"
++
++#: contents/ui/ConfigGeneral.qml:358
++msgctxt "@info:usagetip under a combobox when Touch Mode is on"
++msgid "Automatically set to Large when in Touch Mode"
++msgstr "En el modo táctil se pone en Grande automáticamente"
++
++#: contents/ui/ConfigGeneral.qml:364
++msgctxt "@label:checkbox Which icons the panel status row shows"
++msgid "Status row icons:"
++msgstr "Iconos de la fila de estado:"
++
++#: contents/ui/ConfigGeneral.qml:365
++msgctxt "@option:check System status row icon in the panel"
++msgid "Network"
++msgstr "Red"
++
++#: contents/ui/ConfigGeneral.qml:372
++msgctxt "@option:check System status row icon in the panel"
++msgid "Sound"
++msgstr "Sonido"
++
++#: contents/ui/ConfigGeneral.qml:379
++msgctxt "@option:check System status row icon in the panel"
++msgid "Brightness"
++msgstr "Brillo"
++
++#: contents/ui/ConfigGeneral.qml:386
++msgctxt "@option:check System status row icon in the panel"
++msgid "Battery"
++msgstr "Batería"
++
++#: contents/ui/ConfigGeneral.qml:394
++msgctxt ""
++"@label:spinbox Gap in pixels between the system tray icons and the panel "
++"status row"
++msgid "Status row gap (px):"
++msgstr "Separación de la fila de estado (px):"
++
++#: contents/ui/ConfigGeneral.qml:423
++msgctxt "@title:column"
++msgid "Entries"
++msgstr "Entradas"
++
++#: contents/ui/ConfigGeneral.qml:427
++msgctxt "@option:check, This is referring to system tray entries"
++msgid "Always show all"
++msgstr "Mostrar todo siempre"
++
++#: contents/ui/ExpandedRepresentation.qml:96
++msgctxt "@action:button"
++msgid "Go Back"
++msgstr "Volver"
++
++#: contents/ui/ExpandedRepresentation.qml:109
++msgid "Status and Notifications"
++msgstr "Estado y notificaciones"
++
++#: contents/ui/ExpandedRepresentation.qml:162
++msgid "More actions"
++msgstr "Más acciones"
++
++#: contents/ui/ExpandedRepresentation.qml:210
++msgid "Keep Open"
++msgstr "Mantener abierto"
++
++#: contents/ui/ExpanderArrow.qml:26
++msgid "Close popup"
++msgstr "Cerrar"
++
++#: contents/ui/ExpanderArrow.qml:26
++msgid "Show hidden icons"
++msgstr "Mostrar iconos ocultos"
++
++#: contents/ui/ExpanderArrow.qml:27
++msgid "Show all the items in the system tray in a popup"
++msgstr "Mostrar todos los elementos de la bandeja del sistema en una ventana emergente"
++
++#: contents/ui/config.qml:13
++msgid "General"
++msgstr "General"
++
++#: contents/ui/components/AirplaneToggle.qml:12
++msgid "Airplane"
++msgstr "Modo avión"
++
++#: contents/ui/components/AirplaneToggle.qml:22
++msgid "Airplane Mode — On"
++msgstr "Modo avión: activado"
++
++#: contents/ui/components/AirplaneToggle.qml:22
++msgid "Airplane Mode — Off"
++msgstr "Modo avión: desactivado"
++
++#: contents/ui/components/BatteryPage.qml:14
++msgid "Battery"
++msgstr "Batería"
++
++#: contents/ui/components/BatteryPage.qml:109
++msgid "Fully charged"
++msgstr "Carga completa"
++
++#: contents/ui/components/BatteryPage.qml:109
++msgid "Charging"
++msgstr "Cargando"
++
++#: contents/ui/components/BatteryPage.qml:109
++msgid "Discharging"
++msgstr "Descargando"
++
++#: contents/ui/components/BatteryPage.qml:157
++msgid "Battery health"
++msgstr "Estado de la batería"
++
++#: contents/ui/components/BatteryPage.qml:195
++#: contents/ui/components/PowerProfilePage.qml:27
++msgid "Power Profiles"
++msgstr "Perfiles de energía"
++
++#: contents/ui/components/BatteryPage.qml:206
++#: contents/ui/components/PowerProfilePage.qml:38
++msgid "Performance"
++msgstr "Rendimiento"
++
++#: contents/ui/components/BatteryPage.qml:208
++#: contents/ui/components/PowerProfilePage.qml:40
++msgid "Balanced"
++msgstr "Equilibrado"
++
++#: contents/ui/components/BatteryPage.qml:210
++#: contents/ui/components/PowerProfilePage.qml:42
++msgid "Power Saver"
++msgstr "Ahorro de energía"
++
++#: contents/ui/components/BatteryPage.qml:251
++msgid "Block sleep & screen lock"
++msgstr "Impedir la suspensión y el bloqueo de pantalla"
++
++#: contents/ui/components/BatteryPage.qml:268
++#: contents/ui/components/Footer.qml:95 contents/ui/components/Footer.qml:125
++msgid "Power settings"
++msgstr "Configuración de energía"
++
++#: contents/ui/components/BatterySaverToggle.qml:16
++#: contents/ui/components/SystemStatusRow.qml:297
++msgid "Battery Saver"
++msgstr "Ahorro de batería"
++
++#: contents/ui/components/BatterySaverToggle.qml:31
++msgid "Power Mode — Performance"
++msgstr "Modo de energía: rendimiento"
++
++#: contents/ui/components/BatterySaverToggle.qml:33
++msgid "Power Mode — Power Saver"
++msgstr "Modo de energía: ahorro de energía"
++
++#: contents/ui/components/BatterySaverToggle.qml:35
++msgid "Power Mode — Balanced"
++msgstr "Modo de energía: equilibrado"
++
++#: contents/ui/components/BatteryTile.qml:26
++msgctxt "@item:label Quick settings tile opening the power management page"
++msgid "Power"
++msgstr "Energía"
++
++#: contents/ui/components/BatteryTile.qml:30
++#, javascript-format
++msgctxt ""
++"@info:tooltip Quick settings tile, %1 is the battery charge in percent"
++msgid "Power — charging (%1%)"
++msgstr "Energía: cargando (%1%)"
++
++#: contents/ui/components/BatteryTile.qml:31
++#, javascript-format
++msgctxt ""
++"@info:tooltip Quick settings tile, %1 is the battery charge in percent"
++msgid "Power — %1%"
++msgstr "Energía: %1%"
++
++#: contents/ui/components/BluetoothPage.qml:13
++#: contents/ui/components/BluetoothToggle.qml:13
++msgid "Bluetooth"
++msgstr "Bluetooth"
++
++#: contents/ui/components/BluetoothPage.qml:15
++msgid "No devices paired"
++msgstr "No hay dispositivos emparejados"
++
++#: contents/ui/components/BluetoothPage.qml:15
++msgid "Bluetooth is off"
++msgstr "Bluetooth está desactivado"
++
++#: contents/ui/components/BluetoothPage.qml:18
++msgid "More Bluetooth settings"
++msgstr "Más opciones de Bluetooth"
++
++#: contents/ui/components/BluetoothPage.qml:38
++msgid "Add new device"
++msgstr "Agregar dispositivo"
++
++#: contents/ui/components/BluetoothPage.qml:109
++msgid "Connected"
++msgstr "Conectado"
++
++#: contents/ui/components/BluetoothPage.qml:109
++msgid "Disconnected"
++msgstr "Desconectado"
++
++#: contents/ui/components/BluetoothToggle.qml:30
++msgid "Bluetooth — Off"
++msgstr "Bluetooth: desactivado"
++
++#: contents/ui/components/BluetoothToggle.qml:32
++msgid "Bluetooth — %1 connected"
++msgstr "Bluetooth: %1 conectado"
++
++#: contents/ui/components/BluetoothToggle.qml:33
++msgid "Bluetooth — On, not connected"
++msgstr "Bluetooth: sin conectar"
++
++#: contents/ui/components/BluetoothToggle.qml:44
++msgid "Add new device…"
++msgstr "Agregar dispositivo…"
++
++#: contents/ui/components/BluetoothToggle.qml:49
++msgid "Send file…"
++msgstr "Enviar archivo…"
++
++#: contents/ui/components/BluetoothToggle.qml:54
++msgid "Bluetooth settings"
++msgstr "Configuración de Bluetooth"
++
++#: contents/ui/components/BrightnessPage.qml:13
++msgid "Brightness"
++msgstr "Brillo"
++
++#: contents/ui/components/BrightnessPage.qml:80
++msgid "Display %1"
++msgstr "Pantalla %1"
++
++#: contents/ui/components/BrightnessPage.qml:130
++msgid "Night color settings"
++msgstr "Configuración de luz nocturna"
++
++#: contents/ui/components/BrightnessPage.qml:134
++#: contents/ui/components/Footer.qml:110
++msgid "Display settings"
++msgstr "Configuración de pantalla"
++
++#: contents/ui/components/CastInvertToggle.qml:8
++msgid "Invert Colors"
++msgstr "Invertir colores"
++
++#: contents/ui/components/CastInvertToggle.qml:22
++msgid "Invert Colors — Toggle"
++msgstr "Invertir colores"
++
++#: contents/ui/components/ClipboardPage.qml:18
++msgid "Clipboard"
++msgstr "Portapapeles"
++
++#: contents/ui/components/ClipboardPage.qml:22
++msgid "More clipboard settings"
++msgstr "Más opciones del portapapeles"
++
++#: contents/ui/components/ClipboardPage.qml:88
++msgid "(empty)"
++msgstr "(vacío)"
++
++#: contents/ui/components/ClipboardPage.qml:109
++msgid "Clipboard is empty"
++msgstr "El portapapeles está vacío"
++
++#: contents/ui/components/ColorSchemeToggle.qml:13
++msgid "Dark Mode"
++msgstr "Modo oscuro"
++
++#: contents/ui/components/ColorSchemeToggle.qml:13
++msgid "Light Mode"
++msgstr "Modo claro"
++
++#: contents/ui/components/ColorSchemeToggle.qml:29
++msgid "Switch to light mode"
++msgstr "Cambiar a modo claro"
++
++#: contents/ui/components/ColorSchemeToggle.qml:29
++msgid "Switch to dark mode"
++msgstr "Cambiar a modo oscuro"
++
++#: contents/ui/components/DeviceNotifierPage.qml:19
++msgid "Devices"
++msgstr "Dispositivos"
++
++#: contents/ui/components/DeviceNotifierPage.qml:23
++msgid "More device settings"
++msgstr "Más opciones de dispositivos"
++
++#: contents/ui/components/DeviceNotifierPage.qml:62
++msgid "Removable device"
++msgstr "Dispositivo extraíble"
++
++#: contents/ui/components/DeviceNotifierPage.qml:147
++msgid "Mounted"
++msgstr "Montado"
++
++#: contents/ui/components/DeviceNotifierPage.qml:147
++msgid "Not mounted"
++msgstr "No montado"
++
++#: contents/ui/components/DeviceNotifierPage.qml:190
++msgid "No devices connected"
++msgstr "No hay dispositivos conectados"
++
++#: contents/ui/components/DisplayPage.qml:23
++msgctxt "@title Display mode page"
++msgid "Display"
++msgstr "Pantalla"
++
++#: contents/ui/components/DisplayPage.qml:33
++msgctxt "@item:label Display mode"
++msgid "PC screen only"
++msgstr "Solo pantalla de PC"
++
++#: contents/ui/components/DisplayPage.qml:34
++msgctxt "@info Display mode description"
++msgid "Use only the built-in screen"
++msgstr "Usar solo la pantalla integrada"
++
++#: contents/ui/components/DisplayPage.qml:39
++msgctxt "@item:label Display mode"
++msgid "Duplicate"
++msgstr "Duplicar"
++
++#: contents/ui/components/DisplayPage.qml:40
++msgctxt "@info Display mode description"
++msgid "Show the same image on all screens"
++msgstr "Mostrar la misma imagen en todas las pantallas"
++
++#: contents/ui/components/DisplayPage.qml:45
++msgctxt "@item:label Display mode"
++msgid "Extend"
++msgstr "Extender"
++
++#: contents/ui/components/DisplayPage.qml:46
++msgctxt "@info Display mode description"
++msgid "Use the screens as one desktop"
++msgstr "Usar las pantallas como un solo escritorio"
++
++#: contents/ui/components/DisplayPage.qml:51
++msgctxt "@item:label Display mode"
++msgid "Second screen only"
++msgstr "Solo segunda pantalla"
++
++#: contents/ui/components/DisplayPage.qml:52
++msgctxt "@info Display mode description"
++msgid "Use only the external screen"
++msgstr "Usar solo la pantalla externa"
++
++#: contents/ui/components/DisplayPage.qml:219
++msgctxt "@info Display mode page"
++msgid "Could not read the display configuration."
++msgstr "No se pudo leer la configuración de pantalla."
++
++#: contents/ui/components/DisplayPage.qml:227
++msgctxt "@action:button Open the KDE display settings module"
++msgid "Display settings"
++msgstr "Configuración de pantalla"
++
++#: contents/ui/components/DisplayTile.qml:24
++msgctxt "@item:label Display mode: same image on all screens"
++msgid "Duplicate"
++msgstr "Duplicar"
++
++#: contents/ui/components/DisplayTile.qml:26
++msgctxt "@item:label Display mode: screens form one desktop"
++msgid "Extend"
++msgstr "Extender"
++
++#: contents/ui/components/DisplayTile.qml:28
++msgctxt "@item:label Display mode: only the external screen"
++msgid "Second screen only"
++msgstr "Solo segunda pantalla"
++
++#: contents/ui/components/DisplayTile.qml:30
++msgctxt "@item:label Display mode: only the built-in screen"
++msgid "PC screen only"
++msgstr "Solo pantalla de PC"
++
++#: contents/ui/components/DisplayTile.qml:34
++msgctxt "@item:label Quick settings tile opening the display mode page"
++msgid "Display"
++msgstr "Pantalla"
++
++#: contents/ui/components/DisplayTile.qml:37
++msgctxt "@info:tooltip Quick settings tile, %1 is the current display mode"
++msgid "Display — %1"
++msgstr "Pantalla: %1"
++
++#: contents/ui/components/DndToggle.qml:13
++msgid "Do Not Disturb"
++msgstr "No molestar"
++
++#: contents/ui/components/DndToggle.qml:30
++msgid "Do Not Disturb — On"
++msgstr "No molestar: activado"
++
++#: contents/ui/components/DndToggle.qml:30
++msgid "Do Not Disturb — Off"
++msgstr "No molestar: desactivado"
++
++#: contents/ui/components/Footer.qml:37
++msgid "Charging — %1"
++msgstr "Cargando: %1"
++
++#: contents/ui/components/Footer.qml:42
++msgid "%1 — %2h %3m remaining"
++msgstr "%1: quedan %2 h %3 min"
++
++#: contents/ui/components/Footer.qml:71
++msgid "Power off / Log out"
++msgstr "Apagar o cerrar sesión"
++
++#: contents/ui/components/Footer.qml:85
++msgid "Open System Settings"
++msgstr "Abrir Configuración"
++
++#: contents/ui/components/Footer.qml:100
++msgid "Show battery info"
++msgstr "Mostrar información de la batería"
++
++#: contents/ui/components/Footer.qml:115
++msgid "Sound settings"
++msgstr "Configuración de sonido"
++
++#: contents/ui/components/Footer.qml:120
++msgid "Network settings"
++msgstr "Configuración de red"
++
++#: contents/ui/components/Footer.qml:130
++msgid "Notification settings"
++msgstr "Configuración de notificaciones"
++
++#: contents/ui/components/Footer.qml:140
++msgid "Lock"
++msgstr "Bloquear"
++
++#: contents/ui/components/Footer.qml:145
++msgid "Log out"
++msgstr "Cerrar sesión"
++
++#: contents/ui/components/Footer.qml:150
++msgid "Suspend"
++msgstr "Suspender"
++
++#: contents/ui/components/Footer.qml:155
++msgid "Hibernate"
++msgstr "Hibernar"
++
++#: contents/ui/components/Footer.qml:160
++msgid "Restart"
++msgstr "Reiniciar"
++
++#: contents/ui/components/Footer.qml:165
++msgid "Shut down"
++msgstr "Apagar"
++
++#: contents/ui/components/HotspotToggle.qml:15
++msgid "Hotspot"
++msgstr "Zona Wi-Fi"
++
++#: contents/ui/components/HotspotToggle.qml:30
++msgid "Hotspot — On"
++msgstr "Zona Wi-Fi: activada"
++
++#: contents/ui/components/HotspotToggle.qml:30
++msgid "Hotspot — Off"
++msgstr "Zona Wi-Fi: desactivada"
++
++#: contents/ui/components/InhibitSleepToggle.qml:8
++msgid "Sleep Blocked"
++msgstr "Suspensión bloqueada"
++
++#: contents/ui/components/InhibitSleepToggle.qml:8
++msgid "No Sleep"
++msgstr "Sin suspensión"
++
++#: contents/ui/components/InhibitSleepToggle.qml:58
++msgid "Sleep Inhibited"
++msgstr "Suspensión impedida"
++
++#: contents/ui/components/InhibitSleepToggle.qml:58
++msgid "Sleep Allowed"
++msgstr "Suspensión permitida"
++
++#: contents/ui/components/MediaControllerPage.qml:18
++#: contents/ui/components/MediaCard.qml:63
++msgid "Media"
++msgstr "Multimedia"
++
++#: contents/ui/components/MediaControllerPage.qml:22
++msgid "More media settings"
++msgstr "Más opciones multimedia"
++
++#: contents/ui/components/MediaControllerPage.qml:107
++#: contents/ui/components/MediaCard.qml:77
++msgid "Unknown track"
++msgstr "Pista desconocida"
++
++#: contents/ui/components/MediaControllerPage.qml:116
++msgid "Unknown artist"
++msgstr "Artista desconocido"
++
++#: contents/ui/components/MediaControllerPage.qml:233
++msgid "No media playing"
++msgstr "No se reproduce nada"
++
++#: contents/ui/components/MicMuteToggle.qml:19
++msgid "Mic Muted"
++msgstr "Micrófono silenciado"
++
++#: contents/ui/components/MicMuteToggle.qml:19
++msgid "Mic On"
++msgstr "Micrófono"
++
++#: contents/ui/components/MicMuteToggle.qml:29
++msgid "Microphone — Muted"
++msgstr "Micrófono: silenciado"
++
++#: contents/ui/components/MicMuteToggle.qml:29
++msgid "Microphone — Active"
++msgstr "Micrófono: activo"
++
++#: contents/ui/components/NetworkPage.qml:13
++#: contents/ui/components/NetworkToggle.qml:28
++msgid "Wi-Fi"
++msgstr "Wi-Fi"
++
++#: contents/ui/components/NetworkPage.qml:15
++msgid "No available networks"
++msgstr "No hay redes disponibles"
++
++#: contents/ui/components/NetworkPage.qml:15
++msgid "Wi-Fi is off"
++msgstr "Wi-Fi está desactivado"
++
++#: contents/ui/components/NetworkPage.qml:18
++msgid "More Wi-Fi settings"
++msgstr "Más opciones de Wi-Fi"
++
++#: contents/ui/components/NetworkPage.qml:77
++msgid "Connected, open"
++msgstr "Conectado, abierta"
++
++#: contents/ui/components/NetworkPage.qml:77
++msgid "Connected, secured"
++msgstr "Conectado, protegida"
++
++#: contents/ui/components/NetworkPage.qml:80
++#: contents/ui/components/NetworkPage.qml:397
++msgid "Verifying and connecting"
++msgstr "Comprobando y conectando"
++
++#: contents/ui/components/NetworkPage.qml:83
++#: contents/ui/components/NetworkPage.qml:275
++msgid "Enter the network security key"
++msgstr "Escribe la clave de seguridad de red"
++
++#: contents/ui/components/NetworkPage.qml:252
++msgid "Connect"
++msgstr "Conectar"
++
++#: contents/ui/components/NetworkPage.qml:288
++msgid "Password"
++msgstr "Contraseña"
++
++#: contents/ui/components/NetworkPage.qml:343
++msgid "Cancel"
++msgstr "Cancelar"
++
++#: contents/ui/components/NetworkPage.qml:373
++#: contents/ui/components/MediaCard.qml:123
++msgid "Next"
++msgstr "Siguiente"
++
++#: contents/ui/components/NetworkPage.qml:432
++msgid "Disconnect"
++msgstr "Desconectar"
++
++#: contents/ui/components/NetworkToggle.qml:47
++msgid "Wi-Fi — On"
++msgstr "Wi-Fi: activado"
++
++#: contents/ui/components/NetworkToggle.qml:47
++msgid "Wi-Fi — Off"
++msgstr "Wi-Fi: desactivado"
++
++#: contents/ui/components/NetworkToggle.qml:57
++msgid "Open Wi-Fi settings"
++msgstr "Abrir la configuración de Wi-Fi"
++
++#: contents/ui/components/NetworkToggle.qml:62
++msgid "Create hotspot…"
++msgstr "Crear zona Wi-Fi…"
++
++#: contents/ui/components/NetworkToggle.qml:67
++msgid "Connect to hidden network…"
++msgstr "Conectarse a una red oculta…"
++
++#: contents/ui/components/NetworkToggle.qml:72
++msgid "Known networks…"
++msgstr "Redes conocidas…"
++
++#: contents/ui/components/NightLightToggle.qml:9
++msgid "Night Light"
++msgstr "Luz nocturna"
++
++#: contents/ui/components/NightLightToggle.qml:23
++msgid "Night Light — Unavailable"
++msgstr "Luz nocturna: no disponible"
++
++#: contents/ui/components/NightLightToggle.qml:25
++msgid "Night Light — On"
++msgstr "Luz nocturna: activada"
++
++#: contents/ui/components/NightLightToggle.qml:26
++msgid "Night Light — Off"
++msgstr "Luz nocturna: desactivada"
++
++#: contents/ui/components/NotificationsPage.qml:18
++msgid "Notifications"
++msgstr "Notificaciones"
++
++#: contents/ui/components/NotificationsPage.qml:22
++msgid "More notification settings"
++msgstr "Más opciones de notificaciones"
++
++#: contents/ui/components/NotificationsPage.qml:80
++msgid "Notification"
++msgstr "Notificación"
++
++#: contents/ui/components/NotificationsPage.qml:104
++msgid "Just now"
++msgstr "Ahora mismo"
++
++#: contents/ui/components/NotificationsPage.qml:105
++msgid "%1 m ago"
++msgstr "hace %1 min"
++
++#: contents/ui/components/NotificationsPage.qml:106
++msgid "%1 h ago"
++msgstr "hace %1 h"
++
++#: contents/ui/components/NotificationsPage.qml:107
++msgid "%1 d ago"
++msgstr "hace %1 d"
++
++#: contents/ui/components/NotificationsPage.qml:123
++msgid "No notifications"
++msgstr "No hay notificaciones nuevas"
++
++#: contents/ui/components/PowerProfilePage.qml:10
++msgid "Power Mode"
++msgstr "Modo de energía"
++
++#: contents/ui/components/PowerProfilePage.qml:18
++msgid "More power settings"
++msgstr "Más opciones de energía"
++
++#: contents/ui/components/SystemStatusRow.qml:190
++msgid "Network and Internet settings…"
++msgstr "Configuración de red e Internet…"
++
++#: contents/ui/components/SystemStatusRow.qml:243
++msgid "Volume mixer"
++msgstr "Mezclador de volumen"
++
++#: contents/ui/components/SystemStatusRow.qml:249
++msgid "Sound settings…"
++msgstr "Configuración de sonido…"
++
++#: contents/ui/components/SystemStatusRow.qml:260
++#: contents/ui/components/volume/InputDeviceSection.qml:77
++#: contents/ui/components/volume/OutputDeviceSection.qml:69
++msgid "Unknown device"
++msgstr "Dispositivo desconocido"
++
++#: contents/ui/components/SystemStatusRow.qml:279
++msgid "Screen settings…"
++msgstr "Configuración de pantalla…"
++
++#: contents/ui/components/SystemStatusRow.qml:285
++msgid "Night Light…"
++msgstr "Luz nocturna…"
++
++#: contents/ui/components/SystemStatusRow.qml:316
++msgid "Power settings…"
++msgstr "Configuración de energía…"
++
++#: contents/ui/components/TouchpadToggle.qml:10
++msgid "Touchpad On"
++msgstr "Panel táctil activado"
++
++#: contents/ui/components/TouchpadToggle.qml:10
++msgid "Touchpad Off"
++msgstr "Panel táctil desactivado"
++
++#: contents/ui/components/TouchpadToggle.qml:34
++msgid "Touchpad — Enabled"
++msgstr "Panel táctil: activado"
++
++#: contents/ui/components/TouchpadToggle.qml:34
++msgid "Touchpad — Disabled"
++msgstr "Panel táctil: desactivado"
++
++#: contents/ui/components/VolumePage.qml:12
++msgid "Volume"
++msgstr "Volumen"
++
++#: contents/ui/components/VolumePage.qml:16
++msgid "More volume settings"
++msgstr "Más opciones de volumen"
++
++#: contents/ui/components/VolumePage.qml:64
++msgid "No applications playing audio"
++msgstr "Ninguna aplicación reproduce audio"
++
++#: contents/ui/components/VolumeSlider.qml:56
++msgid "Unmute"
++msgstr "Activar sonido"
++
++#: contents/ui/components/VolumeSlider.qml:56
++msgid "Mute"
++msgstr "Silenciar"
++
++#: contents/ui/components/VolumeSlider.qml:64
++msgid "Test sound"
++msgstr "Probar sonido"
++
++#: contents/ui/components/VolumeSlider.qml:69
++msgid "Audio settings"
++msgstr "Configuración de audio"
++
++#: contents/ui/components/MediaCard.qml:109
++msgid "Previous"
++msgstr "Anterior"
++
++#: contents/ui/components/MediaCard.qml:116
++msgid "Pause"
++msgstr "Pausar"
++
++#: contents/ui/components/MediaCard.qml:116
++msgid "Play"
++msgstr "Reproducir"
++
++#: contents/ui/components/volume/InputDeviceSection.qml:19
++msgid "Input Device"
++msgstr "Dispositivo de entrada"
++
++#: contents/ui/components/volume/InputDeviceSection.qml:26
++msgid "No input device"
++msgstr "Sin dispositivo de entrada"
++
++#: contents/ui/components/volume/OutputDeviceSection.qml:18
++msgid "Output Device"
++msgstr "Dispositivo de salida"
++
++#: contents/ui/components/volume/OutputDeviceSection.qml:28
++msgid "No output device"
++msgstr "Sin dispositivo de salida"
++
++#: contents/ui/components/volume/VolumeMixerSection.qml:17
++msgid "Volume Mixer"
++msgstr "Mezclador de volumen"
++
++#: contents/ui/components/volume/VolumeMixerSection.qml:52
++msgid "Unknown application"
++
++msgstr "Aplicación desconocida"
+diff --git a/win11clock/notifications/NotificationPopup.qml b/win11clock/notifications/NotificationPopup.qml
+index 785a31d..6b139fe 100644
+--- a/win11clock/notifications/NotificationPopup.qml
++++ b/win11clock/notifications/NotificationPopup.qml
+@@ -119,10 +119,8 @@ NotificationsApplet.NotificationWindow {
+         }
+ 
+         DraggableDelegate {
+-            anchors {
+-                fill: parent
+-                topMargin: notificationPopup.modelInterface.closable || notificationPopup.modelInterface.dismissable || notificationPopup.modelInterface.configurable ? -notificationPopup.topPadding : 0
+-            }
++            // kde-win11: sin margen negativo arriba; la cabecera ya no toca el borde (estilo Windows 11)
++            anchors.fill: parent
+             leftPadding: 0
+             rightPadding: 0
+             hoverEnabled: true
+@@ -195,6 +193,8 @@ NotificationsApplet.NotificationWindow {
+             contentItem: Delegates.DelegatePopup {
+                 id: notificationItem
+ 
++                popupHovered: focusListener.containsMouse
++
+                 Layout.preferredHeight: implicitHeight // Why is this necessary?
+ 
+                 modelInterface {
+diff --git a/win11clock/notifications/components/ActionContainer.qml b/win11clock/notifications/components/ActionContainer.qml
+index ae1d918..f18fefe 100644
+--- a/win11clock/notifications/components/ActionContainer.qml
++++ b/win11clock/notifications/components/ActionContainer.qml
+@@ -69,8 +69,13 @@ PlasmaComponents3.StackView {
+         id: actionRow
+         visible: actionContainer.currentItem === actionRow
+         spacing: 0
++        uniformCellSizes: __fullWidth
++
++        // kde-win11: en las emergentes los botones ocupan todo el ancho, a partes iguales (Windows 11)
++        readonly property bool __fullWidth: !actionContainer.modelInterface.inHistory
+ 
+         Item {
++            visible: !actionRow.__fullWidth
+             Layout.fillWidth: true
+             Layout.fillHeight: true
+         }
+@@ -112,7 +117,7 @@ PlasmaComponents3.StackView {
+                 required property string label
+                 required property string actionName
+                 Layout.fillWidth: true
+-                Layout.maximumWidth: implicitWidth
++                Layout.maximumWidth: actionRow.__fullWidth ? Infinity : implicitWidth
+                 Layout.leftMargin: index > 0 ? Kirigami.Units.smallSpacing : 0
+ 
+                 flat: false
+diff --git a/win11clock/notifications/delegates/DelegatePopup.qml b/win11clock/notifications/delegates/DelegatePopup.qml
+index de01aca..cf3fc88 100644
+--- a/win11clock/notifications/delegates/DelegatePopup.qml
++++ b/win11clock/notifications/delegates/DelegatePopup.qml
+@@ -5,11 +5,20 @@
+     SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+ */
+ 
++// kde-win11: notificación emergente con el diseño de Windows 11
++//   ┌──────────────────────────────────────────┐
++//   │ [▪] Nombre de la app              ···  ✕ │  ← los botones aparecen al pasar el ratón
++//   │ ┌────┐ Título en negrita                 │
++//   │ │ 48 │ Texto del mensaje, en gris claro, │
++//   │ └────┘ hasta varias líneas               │
++//   │ [   Acción 1   ] [   Acción 2   ]        │
++//   └──────────────────────────────────────────┘
++// Sin barra de tiempo restante ni cabecera separada, como en Windows.
++
+ import QtQuick
+ import QtQuick.Layouts
+ 
+ import org.kde.plasma.components as PlasmaComponents3
+-import org.kde.plasma.extras as PlasmaExtras
+ import org.kde.kirigami as Kirigami
+ import org.kde.kquickcontrolsaddons as KQuickControlsAddons
+ 
+@@ -22,89 +31,118 @@ import "../components" as Components
+ BaseDelegate {
+     id: delegateRoot
+ 
++    // El ratón está sobre la notificación: muestra ··· y ✕ (lo pone NotificationPopup)
++    property bool popupHovered: false
++
+     Layout.preferredWidth: (footerLoader.item as Item)?.implicitWidth ?? -1
+ 
+     body: bodyLabel
+     icon: icon
+     footer: footerLoader.item as Item
+-    columns: 3
++    columns: 2
++
++    rowSpacing: 0
++    columnSpacing: Kirigami.Units.largeSpacing
+ 
+     Accessible.role: Accessible.Notification
+ 
+-    readonly property int __firstColumn: modelInterface.urgency === NotificationManager.Notifications.CriticalUrgency ? 1 : 0
++    readonly property bool __critical: modelInterface.urgency === NotificationManager.Notifications.CriticalUrgency
+ 
+-    PlasmaExtras.PlasmoidHeading {
++    // --- Cabecera: icono pequeño + nombre de la app, botones a la derecha ---------
++    RowLayout {
+         id: heading
+-        topInset: 0
+         Layout.fillWidth: true
+-        Layout.columnSpan: delegateRoot.__firstColumn + 2
+-        bottomPadding: 0
+-        // We want the close button borders to touch popup borders
+-        leftPadding: Layout.mirrored ? -delegateRoot.modelInterface.popupLeftPadding : 0
+-        rightPadding: Layout.mirrored ? 0 : -delegateRoot.modelInterface.popupRightPadding
+-
+-        // HACK PlasmoidHeading is a QQC2 Control which accepts left mouse button by default,
+-        // which breaks the popup default action mouse handler, cf. QTBUG-89785
+-        Component.onCompleted: Notifications.InputDisabler.makeTransparentForInput(this)
+-
+-        contentItem: Components.NotificationHeader {
+-            modelInterface: delegateRoot.modelInterface
++        Layout.row: 0
++        Layout.columnSpan: 2
++        Layout.bottomMargin: Kirigami.Units.smallSpacing
++        spacing: Kirigami.Units.smallSpacing
++
++        Kirigami.Icon {
++            Layout.preferredWidth: Kirigami.Units.iconSizes.small
++            Layout.preferredHeight: Kirigami.Units.iconSizes.small
++            source: delegateRoot.modelInterface.applicationIconSource
++            visible: valid
+         }
+-    }
+ 
+-    // Horizontal timeout indicator
+-    Item {
+-        Layout.fillWidth: true
+-        Layout.row: 1
+-        Layout.columnSpan: delegateRoot.__firstColumn + 2
+-        // Hug the top, left, and right
+-        Layout.topMargin: -((delegateRoot.rowSpacing * 2) + height)
+-        Layout.leftMargin: -delegateRoot.modelInterface.popupLeftPadding
+-        Layout.rightMargin: -delegateRoot.modelInterface.popupRightPadding
+-        implicitHeight: 2
+-        implicitWidth: -1
+-        visible: !criticalNotificationIndicator.visible && Notifications.Globals.notificationSettings.showPopupTimeout
++        PlasmaComponents3.Label {
++            Layout.fillWidth: true
++            text: delegateRoot.modelInterface.applicationName
++                  + (delegateRoot.modelInterface.originName ? " · " + delegateRoot.modelInterface.originName : "")
++            textFormat: Text.PlainText
++            elide: Text.ElideRight
++            font: Kirigami.Theme.smallFont
++            opacity: 0.8
++        }
+ 
++        // Aviso importante (urgencia crítica): punto de color, sin la franja lateral de KDE
+         Rectangle {
+-            readonly property real completionFraction: {
+-                if (delegateRoot.modelInterface.timeout === 0) {
+-                    return 0
+-                }
++            visible: delegateRoot.__critical
++            implicitWidth: Kirigami.Units.smallSpacing * 2
++            implicitHeight: implicitWidth
++            radius: width / 2
++            color: Kirigami.Theme.neutralTextColor
++        }
+ 
+-                return delegateRoot.modelInterface.remainingTime / delegateRoot.modelInterface.timeout
++        Row {
++            id: headingButtons
++            Layout.alignment: Qt.AlignVCenter
++            spacing: 0
++            // Como en Windows: ocultos hasta pasar el ratón (siguen respondiendo al teclado y lector de pantalla)
++            opacity: delegateRoot.popupHovered || configureButton.activeFocus || dismissButton.activeFocus || closeButton.activeFocus ? 1 : 0
++            Behavior on opacity { NumberAnimation { duration: Kirigami.Units.shortDuration } }
++
++            PlasmaComponents3.ToolButton {
++                id: configureButton
++                visible: delegateRoot.modelInterface.configurable
++                icon.name: "view-more-horizontal-symbolic"
++                display: PlasmaComponents3.AbstractButton.IconOnly
++                text: delegateRoot.modelInterface.configureActionLabel || i18nd("plasma_applet_org.kde.plasma.notifications", "Configure")
++                onClicked: delegateRoot.modelInterface.configureClicked()
++                PlasmaComponents3.ToolTip { text: configureButton.text }
+             }
+ 
+-            height: parent.height
+-            width: Math.round(parent.width * completionFraction)
+-            anchors.left: parent.left
++            PlasmaComponents3.ToolButton {
++                id: dismissButton
++                visible: delegateRoot.modelInterface.dismissable
++                icon.name: delegateRoot.modelInterface.dismissed ? "window-restore-symbolic" : "window-minimize-symbolic"
++                display: PlasmaComponents3.AbstractButton.IconOnly
++                text: delegateRoot.modelInterface.dismissed
++                    ? i18ndc("plasma_applet_org.kde.plasma.notifications", "Opposite of minimize", "Restore")
++                    : i18nd("plasma_applet_org.kde.plasma.notifications", "Minimize")
++                onClicked: delegateRoot.modelInterface.dismissClicked()
++                PlasmaComponents3.ToolTip { text: dismissButton.text }
++            }
+ 
+-            color: Kirigami.Theme.highlightColor
++            PlasmaComponents3.ToolButton {
++                id: closeButton
++                visible: delegateRoot.modelInterface.closable
++                icon.name: "window-close-symbolic"
++                display: PlasmaComponents3.AbstractButton.IconOnly
++                text: delegateRoot.modelInterface.closeButtonToolTip || i18nd("plasma_applet_org.kde.plasma.notifications", "Close")
++                onClicked: delegateRoot.modelInterface.closeClicked()
++                PlasmaComponents3.ToolTip { text: closeButton.text }
++            }
+         }
+     }
+ 
+-    Rectangle {
+-        id: criticalNotificationIndicator
+-        Layout.fillHeight: true
+-        Layout.leftMargin: Layout.mirrored ? 0 : -delegateRoot.modelInterface.popupLeftPadding
+-        Layout.rightMargin: Layout.mirrored ? -delegateRoot.modelInterface.popupRightPadding : 0
+-        Layout.topMargin: -delegateRoot.rowSpacing
+-        Layout.bottomMargin: -delegateRoot.rowSpacing
+-        Layout.rowSpan: 3
+-
+-        implicitWidth: 4
+-        height: parent.height
+-        color: Kirigami.Theme.neutralTextColor
+-        visible: delegateRoot.modelInterface.urgency === NotificationManager.Notifications.CriticalUrgency
++    // --- Imagen grande a la izquierda (foto del remitente, portada, icono…) --------
++    Components.Icon {
++        id: icon
++        Layout.row: 1
++        Layout.column: 0
++        Layout.rowSpan: 2
++        Layout.topMargin: Kirigami.Units.smallSpacing / 2
++        modelInterface: delegateRoot.modelInterface
+     }
+ 
++    // --- Título y texto ------------------------------------------------------------
+     Components.Summary {
+         id: summary
+-        // Base layout intentionally has no row spacing, so add top padding here when needed
+-        Layout.topMargin: delegateRoot.hasBodyText || icon.visible ? Kirigami.Units.smallSpacing : 0
+         Layout.fillWidth: true
+-        Layout.row: 2
+-        Layout.column: delegateRoot.__firstColumn
++        Layout.row: 1
++        Layout.column: icon.visible ? 1 : 0
+         Layout.columnSpan: icon.visible ? 1 : 2
++        font.weight: Font.DemiBold
+         modelInterface: delegateRoot.modelInterface
+ 
+         KQuickControlsAddons.MouseEventListener {
+@@ -114,23 +152,12 @@ BaseDelegate {
+         }
+     }
+ 
+-    Components.Icon {
+-        id: icon
+-        // Base layout intentionally has no row spacing, so add top padding here
+-        Layout.topMargin: Kirigami.Units.smallSpacing
+-        Layout.row: 2
+-        Layout.column: delegateRoot.__firstColumn + 1
+-        Layout.rowSpan: 2
+-        modelInterface: delegateRoot.modelInterface
+-    }
+-
+     KQuickControlsAddons.MouseEventListener {
+-        // Base layout intentionally has no row spacing, so add top padding here when needed
+-        Layout.topMargin: summary.visible ? 0 : Kirigami.Units.smallSpacing
++        Layout.topMargin: summary.visible ? Kirigami.Units.smallSpacing / 2 : 0
+         Layout.fillWidth: true
+         Layout.fillHeight: true
+-        Layout.row: summary.visible ? 3 : 2
+-        Layout.column: delegateRoot.__firstColumn
++        Layout.row: summary.visible ? 2 : 1
++        Layout.column: icon.visible ? 1 : 0
+         Layout.columnSpan: icon.visible ? 1 : 2
+         Layout.maximumHeight: Kirigami.Units.gridUnit * delegateRoot.modelInterface.maximumLineCount
+         // The body doesn't need to influence the implicit width in any way, this avoids a binding loop
+@@ -154,20 +181,23 @@ BaseDelegate {
+             Components.Body {
+                 id: bodyLabel
+                 width: scroll.width - scroll.PlasmaComponents3.ScrollBar.vertical.width
++                // Texto secundario, algo más tenue que el título, como en Windows
++                opacity: 0.8
+                 modelInterface: delegateRoot.modelInterface
+                 Accessible.ignored: true // ignore HTML body in favor of Accessible.description on delegateRoot
+             }
+         }
+     }
+ 
++    // --- Botones de acción, respuesta, miniaturas o progreso de una tarea --------------
+     Components.FooterLoader {
+         id: footerLoader
+         Layout.fillWidth: true
+-        Layout.row: 4
+-        Layout.column: delegateRoot.__firstColumn
++        Layout.row: 3
++        Layout.column: 0
+         Layout.columnSpan: 2
++        Layout.topMargin: visible ? Kirigami.Units.largeSpacing : 0
+         modelInterface: delegateRoot.modelInterface
+         iconContainerItem: icon
+     }
+ }
+-
+diff --git a/win11clock/notifications/global/Globals.qml b/win11clock/notifications/global/Globals.qml
+index 6e65a69..4729bf3 100644
+--- a/win11clock/notifications/global/Globals.qml
++++ b/win11clock/notifications/global/Globals.qml
+@@ -172,11 +172,12 @@ QtObject {
+     // Make it wider when on the top or the bottom center, since there's more horizontal
+     // space available without looking weird
+     // On mobile however we don't really want to have larger notifications
+-    property int popupWidth: (popupLocation & Qt.AlignHCenter) && !Kirigami.Settings.isMobile ? Kirigami.Units.gridUnit * 22 : Kirigami.Units.gridUnit * 18
+-    property int popupEdgeDistance: Kirigami.Units.gridUnit * 2
++    // kde-win11: ~364 px de ancho y a 12 px del borde y de la barra de tareas, como en Windows 11
++    property int popupWidth: (popupLocation & Qt.AlignHCenter) && !Kirigami.Settings.isMobile ? Kirigami.Units.gridUnit * 22 : Kirigami.Units.gridUnit * 20
++    property int popupEdgeDistance: Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing
+     // Reduce spacing between popups when centered so the stack doesn't intrude into the
+     // view as much
+-    property int popupSpacing: (popupLocation & Qt.AlignHCenter) && !Kirigami.Settings.isMobile ? Kirigami.Units.smallSpacing : Kirigami.Units.gridUnit
++    property int popupSpacing: (popupLocation & Qt.AlignHCenter) && !Kirigami.Settings.isMobile ? Kirigami.Units.smallSpacing : Kirigami.Units.largeSpacing
+ 
+     // How much vertical screen real estate the notification popups may consume
+     readonly property real popupMaximumScreenFill: 0.8
+diff --git a/win11tasks/contents/ui/main.qml b/win11tasks/contents/ui/main.qml
+index b9345b1..f9301c8 100644
+--- a/win11tasks/contents/ui/main.qml
++++ b/win11tasks/contents/ui/main.qml
+@@ -20,6 +20,7 @@ import org.kde.plasma.workspace.trianglemousefilter
+ import org.kde.taskmanager as TaskManager
+ import plasma.applet.org.mops1k.win11tasks as TaskManagerApplet
+ import org.kde.plasma.workspace.dbus as DBus
++import org.kde.plasma.plasma5support as P5Support
+ 
+ PlasmoidItem {
+     id: tasks
+@@ -48,6 +49,28 @@ PlasmoidItem {
+ 
+     Plasmoid.constraintHints: Plasmoid.CanFillArea
+ 
++    // kde-win11: clic derecho en la barra -> "Administrador de tareas" y "Configuración de la
++    // barra de tareas", como en Windows 11
++    P5Support.DataSource {
++        id: launcher
++        engine: "executable"
++        connectedSources: []
++        onNewData: source => disconnectSource(source)
++        function run(cmd) { connectSource(cmd) }
++    }
++    Plasmoid.contextualActions: [
++        PlasmaCore.Action {
++            text: "Administrador de tareas"
++            icon.name: "utilities-system-monitor"
++            onTriggered: launcher.run('p="$HOME/.local/bin/win11-taskmgr"; [ -x "$p" ] && exec "$p" || exec plasma-systemmonitor')
++        },
++        PlasmaCore.Action {
++            text: "Configuración de la barra de tareas"
++            icon.name: "configure"
++            onTriggered: launcher.run('p="$HOME/.local/bin/win11-settings"; [ -x "$p" ] && exec "$p" personalization || exec systemsettings')
++        }
++    ]
++
+     Plasmoid.onUserConfiguringChanged: {
+         if (Plasmoid.userConfiguring && groupDialog !== null) {
+             groupDialog.visible = false;

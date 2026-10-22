@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Administrador de tareas
+GenericName=Monitor del sistema
+Comment=Procesos, rendimiento, aplicaciones de arranque y servicios
+Exec=/usr/bin/win11-taskmgr
+Icon=utilities-system-monitor
+Categories=System;Monitor;
+Keywords=procesos;tareas;rendimiento;cpu;memoria;taskmgr;task manager;
+StartupWMClass=win11-taskmgr
+X-KDE-Wayland-Interfaces=org_kde_plasma_window_management

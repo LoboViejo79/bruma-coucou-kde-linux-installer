@@ -1,0 +1,230 @@
+diff --color -ru a/src/dolphinmainwindow.cpp b/src/dolphinmainwindow.cpp
+--- a/src/dolphinmainwindow.cpp	2026-10-08 04:29:54.628826389 -0300
++++ b/src/dolphinmainwindow.cpp	2026-10-08 04:29:54.629726572 -0300
+@@ -92,6 +92,8 @@
+ #include <QTimer>
+ #include <QToolButton>
+ #include <QtConcurrentRun>
++#include <QLineEdit>
++#include <QWidgetAction>
+ #include <dolphindebug.h>
+ 
+ #include <algorithm>
+@@ -209,8 +211,14 @@
+ #endif
+     setupFileItemActions();
+ 
++    win11SetupSearchField();
++
+     const bool usePhoneUi{KRuntimePlatform::runtimePlatform().contains(QLatin1String("phone"))};
+     setupGUI(Save | Create | ToolBar, usePhoneUi ? QStringLiteral("dolphinuiforphones.rc") : QString() /* load the default dolphinui.rc file */);
++    // kde-win11: el botón de búsqueda clásico sobra, la caja search_field lo sustituye
++    if (QAction *toggleSearch = actionCollection()->action(QStringLiteral("toggle_search"))) {
++        toggleSearch->setVisible(false);
++    }
+     stateChanged(QStringLiteral("new_file"));
+ 
+     QClipboard *clipboard = QApplication::clipboard();
+@@ -928,8 +936,9 @@
+ 
+ void DolphinMainWindow::find()
+ {
+-    m_activeViewContainer->setSearchBarVisible(true);
+-    m_activeViewContainer->setFocusToSearchBar();
++    // kde-win11: se busca en la caja de la barra superior, no en la barra inferior
++    m_win11SearchField->setFocus(Qt::ShortcutFocusReason);
++    m_win11SearchField->selectAll();
+ }
+ 
+ void DolphinMainWindow::updateSearchAction()
+@@ -2094,7 +2103,7 @@
+         m_backAction->setObjectName(backAction->objectName());
+         m_backAction->setShortcuts(backAction->shortcuts());
+     }
+-    m_backAction->setPopupMode(KToolBarPopupAction::DelayedPopup);
++    m_backAction->setPopupMode(KToolBarPopupAction::NoPopup); // kde-win11: sin la flecha ▾ del historial, como Windows 11
+     connect(m_backAction, &QAction::triggered, this, &DolphinMainWindow::goBack);
+     connect(m_backAction->popupMenu(), &QMenu::aboutToShow, this, &DolphinMainWindow::slotAboutToShowBackPopupMenu);
+     connect(m_backAction->popupMenu(), &QMenu::triggered, this, &DolphinMainWindow::slotGoBack);
+@@ -2145,7 +2154,7 @@
+         m_forwardAction->setObjectName(forwardAction->objectName());
+         m_forwardAction->setShortcuts(forwardAction->shortcuts());
+     }
+-    m_forwardAction->setPopupMode(KToolBarPopupAction::DelayedPopup);
++    m_forwardAction->setPopupMode(KToolBarPopupAction::NoPopup); // kde-win11: sin la flecha ▾ del historial, como Windows 11
+     connect(m_forwardAction, &QAction::triggered, this, &DolphinMainWindow::goForward);
+     connect(m_forwardAction->popupMenu(), &QMenu::aboutToShow, this, &DolphinMainWindow::slotAboutToShowForwardPopupMenu);
+     connect(m_forwardAction->popupMenu(), &QMenu::triggered, this, &DolphinMainWindow::slotGoForward);
+@@ -3229,4 +3238,92 @@
+     }
+ }
+ 
++
++// ---- kde-win11 -------------------------------------------------------------------------------
++// Caja de búsqueda como la del Explorador de Windows 11: se escribe en la barra superior y busca por
++// nombre en la carpeta actual (filenamesearch) sin abrir la barra de búsqueda inferior de Dolphin.
++
++void DolphinMainWindow::win11SetupSearchField()
++{
++    m_win11SearchField = new QLineEdit(this);
++    m_win11SearchField->setObjectName(QStringLiteral("win11SearchField"));
++    m_win11SearchField->setClearButtonEnabled(true);
++    m_win11SearchField->addAction(QIcon::fromTheme(QStringLiteral("search")), QLineEdit::TrailingPosition);
++    m_win11SearchField->setMinimumWidth(220);
++    m_win11SearchField->setMaximumWidth(320);
++
++    m_win11SearchTimer = new QTimer(this);
++    m_win11SearchTimer->setSingleShot(true);
++    m_win11SearchTimer->setInterval(350); // busca al dejar de escribir, como Windows
++    connect(m_win11SearchTimer, &QTimer::timeout, this, &DolphinMainWindow::win11Search);
++    connect(m_win11SearchField, &QLineEdit::textEdited, m_win11SearchTimer, qOverload<>(&QTimer::start));
++    connect(m_win11SearchField, &QLineEdit::returnPressed, this, [this]() {
++        m_win11SearchTimer->stop();
++        win11Search();
++    });
++    // Esc: borra la búsqueda y vuelve a la carpeta
++    auto *escape = new QAction(m_win11SearchField);
++    escape->setShortcut(Qt::Key_Escape);
++    escape->setShortcutContext(Qt::WidgetShortcut);
++    m_win11SearchField->addAction(escape);
++    connect(escape, &QAction::triggered, this, [this]() {
++        m_win11SearchField->clear();
++        win11Search();
++        m_activeViewContainer->view()->setFocus();
++    });
++
++    auto *action = new QWidgetAction(this);
++    action->setText(i18nc("@action:intoolbar", "Search"));
++    action->setDefaultWidget(m_win11SearchField);
++    actionCollection()->addAction(QStringLiteral("search_field"), action);
++
++    connect(this, &DolphinMainWindow::urlChanged, this, &DolphinMainWindow::win11UrlChanged);
++}
++
++void DolphinMainWindow::win11Search()
++{
++    if (!m_activeViewContainer) {
++        return;
++    }
++    const QString term = m_win11SearchField->text().trimmed();
++    const bool searching = Search::isSupportedSearchScheme(m_activeViewContainer->url().scheme());
++    if (term.isEmpty()) {
++        if (searching && m_win11SearchBase.isValid()) {
++            m_activeViewContainer->setUrl(m_win11SearchBase);
++        }
++        return;
++    }
++    const QUrl base = m_win11SearchBase.isValid() ? m_win11SearchBase : m_activeViewContainer->url();
++    Search::DolphinQuery query(base, base);
++    query.setSearchTool(Search::SearchTool::Filenamesearch);
++    query.setSearchThrough(Search::SearchThrough::FileNames);
++    query.setSearchPath(base);
++    query.setSearchTerm(term);
++    m_activeViewContainer->setGrabFocusOnUrlChange(false); // seguir escribiendo en la caja
++    m_activeViewContainer->setUrl(query.toUrl());
++    m_activeViewContainer->setGrabFocusOnUrlChange(true);
++}
++
++void DolphinMainWindow::win11UrlChanged(const QUrl &url)
++{
++    if (!m_win11SearchField) {
++        return;
++    }
++    if (Search::isSupportedSearchScheme(url.scheme())) {
++        // p. ej. al volver atrás a una búsqueda: la caja muestra lo buscado
++        const Search::DolphinQuery query(url, m_win11SearchBase);
++        if (!m_win11SearchField->hasFocus()) {
++            m_win11SearchField->setText(query.searchTerm());
++        }
++        if (query.searchPath().isValid()) {
++            m_win11SearchBase = query.searchPath();
++        }
++        return;
++    }
++    m_win11SearchBase = url;
++    m_win11SearchField->clear();
++    QString name = m_activeViewContainer ? m_activeViewContainer->caption() : url.fileName();
++    m_win11SearchField->setPlaceholderText(QStringLiteral("Buscar en %1").arg(name)); // como Windows
++}
++
+ #include "moc_dolphinmainwindow.cpp"
+diff --color -ru a/src/dolphinmainwindow.h b/src/dolphinmainwindow.h
+--- a/src/dolphinmainwindow.h	2026-10-08 04:29:54.630582734 -0300
++++ b/src/dolphinmainwindow.h	2026-10-08 04:29:54.631340044 -0300
+@@ -776,6 +776,14 @@
+         void jobError(KIO::Job *job) override;
+     };
+ 
++    // kde-win11: caja de búsqueda en la barra superior
++    void win11SetupSearchField();
++    void win11Search();
++    void win11UrlChanged(const QUrl &url);
++    class QLineEdit *m_win11SearchField = nullptr;
++    class QTimer *m_win11SearchTimer = nullptr;
++    QUrl m_win11SearchBase;
++
+     KNewFileMenu *m_newFileMenu;
+     DolphinTabWidget *m_tabWidget;
+     DolphinViewContainer *m_activeViewContainer;
+diff --color -ru a/src/dolphinurlnavigator.cpp b/src/dolphinurlnavigator.cpp
+--- a/src/dolphinurlnavigator.cpp	2026-10-08 04:29:54.633411942 -0300
++++ b/src/dolphinurlnavigator.cpp	2026-10-08 04:29:54.634040431 -0300
+@@ -34,6 +34,16 @@
+     setShowFullPath(settings->showFullPath());
+     setHomeUrl(Dolphin::homeUrl());
+     setPlacesSelectorVisible(DolphinUrlNavigatorsController::placesSelectorVisible());
++    // kde-win11: la hoja de estilos dibuja la dirección como una caja redondeada; margen interno
++    // para que el icono del lugar no quede pegado al borde
++    setAttribute(Qt::WA_StyledBackground);
++    if (layout()) {
++        layout()->setContentsMargins(8, 0, 6, 0);
++    }
++    // Al escribir la ruta, el campo ya muestra su propio icono: se oculta el del lugar (no repetido)
++    connect(this, &KUrlNavigator::editableStateChanged, this, [this](bool editable) {
++        setPlacesSelectorVisible(!editable && DolphinUrlNavigatorsController::placesSelectorVisible());
++    });
+     editor()->setCompletionMode(KCompletion::CompletionMode(settings->urlCompletionMode()));
+     setWhatsThis(xi18nc("@info:whatsthis location bar",
+                         "<para>This describes the location of the files and folders "
+diff --color -ru a/src/dolphinurlnavigatorscontroller.cpp b/src/dolphinurlnavigatorscontroller.cpp
+--- a/src/dolphinurlnavigatorscontroller.cpp	2026-10-08 04:29:54.634696550 -0300
++++ b/src/dolphinurlnavigatorscontroller.cpp	2026-10-08 04:29:54.635427340 -0300
+@@ -29,9 +29,9 @@
+ 
+ void DolphinUrlNavigatorsController::slotPlacesPanelVisibilityChanged(bool visible)
+ {
+-    // The places-selector from the URL navigator should only be shown
+-    // if the places dock is invisible
+-    s_placesSelectorVisible = !visible;
++    // kde-win11: como en Windows 11, la dirección empieza siempre con el icono del lugar (⌂ › …)
++    Q_UNUSED(visible)
++    s_placesSelectorVisible = true;
+ 
+     for (DolphinUrlNavigator *urlNavigator : s_instances) {
+         urlNavigator->setPlacesSelectorVisible(s_placesSelectorVisible);
+diff --color -ru a/src/dolphinviewcontainer.cpp b/src/dolphinviewcontainer.cpp
+--- a/src/dolphinviewcontainer.cpp	2026-10-08 04:29:54.631979983 -0300
++++ b/src/dolphinviewcontainer.cpp	2026-10-08 04:29:54.632709033 -0300
+@@ -327,6 +327,11 @@
+ 
+ void DolphinViewContainer::setSearchBarVisible(bool visible)
+ {
++    // kde-win11: la búsqueda se escribe en la caja de la barra superior (DolphinMainWindow);
++    // la barra de búsqueda inferior no se muestra nunca.
++    if (visible) {
++        return;
++    }
+     if (!visible) {
+         if (isSearchBarVisible()) {
+             m_searchBar->setVisible(false, WithAnimation, Search::Bar::HideBehavior::KeepCurrentUrl);
+@@ -394,7 +399,9 @@
+ 
+ void DolphinViewContainer::setFocusToSearchBar()
+ {
+-    Q_ASSERT(isSearchBarVisible());
++    if (!m_searchBar) {
++        return; // kde-win11: sin barra de búsqueda inferior
++    }
+     m_searchBar->selectAll();
+ }
+ 

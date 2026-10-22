@@ -1,0 +1,18 @@
+{
+  "autoCloseInterval": 2000000.0,
+  "openOnHover": true,
+  "pillColors": {
+    "integration_claude": "#FFC8A2",
+    "ai_anthropic": "#FFDAB9",
+    "agent_codex": "#B5EAD7",
+    "integration_resend": "#CDB4DB",
+    "integration_n8n": "#FFAFCC",
+    "integration_vercel": "#A2D2FF",
+    "integration_github": "#BDE0FE",
+    "agent_gemini": "#FDFD96",
+    "agent_cursor": "#C7CEEA",
+    "agent_copilot": "#E2F0CB",
+    "integration_spotify": "#B9FBC0",
+    "integration_stripe": "#D5C6FF"
+  }
+}

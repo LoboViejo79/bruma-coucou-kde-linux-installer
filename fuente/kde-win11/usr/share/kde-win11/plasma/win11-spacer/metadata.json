@@ -1,0 +1,12 @@
+{
+    "KPlugin": {
+        "Id": "org.kde.win11.spacer",
+        "Name": "Espacio de la barra de tareas",
+        "Description": "Separador flexible con el menú de clic derecho de la barra de tareas de Windows 11",
+        "Icon": "distribute-horizontal-x",
+        "License": "GPL",
+        "Category": "Windows and Tasks"
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

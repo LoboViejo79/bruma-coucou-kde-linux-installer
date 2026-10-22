@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [ { "Name": "kde-win11" } ],
+        "Description": "Barra de tareas, menú Inicio y fondo de Windows 11",
+        "Id": "org.kde.win11.desktop",
+        "License": "GPL-3.0-or-later",
+        "Name": "Windows 11",
+        "Version": "1.0"
+    },
+    "X-Plasma-APIVersion": "2"
+}

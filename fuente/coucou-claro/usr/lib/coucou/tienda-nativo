@@ -1,0 +1,277 @@
+#!/bin/bash
+# Tienda de Coucou: las apps nativas (paquetes de CachyOS/Arch o del AUR), al lado de las de Flathub.
+# Lo usa la tienda (win11-store) y el instalador. Corre como el usuario; lo que necesita ser
+# administrador lo pide a tienda-nativo-root con pkexec (una sola contraseña cada pocos minutos).
+#
+#   tienda-nativo buscar <id de Flathub> [sitio web]   de dónde se puede instalar:
+#        preferido <flathub|repo|aur>
+#        repo <paquete> <versión> <repositorio>
+#        aur <paquete> <versión>
+#   tienda-nativo instalados       las apps nativas instaladas que tienen app en Flathub, una por línea:
+#        <id> TAB <paquete> TAB <versión> TAB <repo|aur> TAB <nombre> TAB <icono> TAB <propia>
+#        (propia = 1 si la instaló la tienda o está en apps.conf: esas se muestran en la Biblioteca;
+#        las demás, como Dolphin, solo sirven para saber que ya están. El id va como en Flathub si se
+#        sabe; si salió del catálogo de Arch, en minúsculas)
+#   tienda-nativo instalar <repo|aur> <paquete> <id>
+#   tienda-nativo quitar <paquete> <id>
+#   tienda-nativo abrir <paquete>
+#   tienda-nativo deps-aur <paquete>       (instalador) lo que falta de los repositorios para armarlo
+#   tienda-nativo construir-aur <paquete>  (instalador) lo arma; dice "ARCHIVO <ruta>" por cada paquete
+#
+# Mientras trabaja escribe "PROGRESO <0-100> <texto>"; si falla, "ERROR <texto>" y sale con error.
+set -uo pipefail
+export LC_ALL=C.UTF-8
+CONF=${COUCOU_TIENDA_CONF:-/usr/share/coucou/tienda/apps.conf}
+CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/coucou-tienda
+REGISTRO=${XDG_DATA_HOME:-$HOME/.local/share}/coucou-tienda/nativos.tsv   # id paquete (lo que instaló la tienda)
+AUR=https://aur.archlinux.org
+ROOT_HELPER=/usr/lib/coucou/tienda-nativo-root
+mkdir -p "$CACHE" "$(dirname "$REGISTRO")"
+
+progreso() { printf 'PROGRESO %s %s\n' "$1" "$2"; }
+falla() { printf 'ERROR %s\n' "$*"; exit 1; }
+valido() { [[ $1 =~ ^[a-z0-9@_+][a-z0-9@._+-]*$ ]]; }
+como_root() {
+  if [ "$(id -u)" = 0 ]; then "$ROOT_HELPER" "$@"; return; fi
+  pkexec "$ROOT_HELPER" "$@"
+  local r=$?
+  # 126/127: se cerró la ventana de la contraseña o la contraseña no era
+  [ $r = 126 ] || [ $r = 127 ] && falla "se canceló la autorización de administrador."
+  return $r
+}
+
+# Fila de apps.conf para un id (sin distinguir mayúsculas)
+fila() { awk -v id="${1,,}" '!/^[[:space:]]*(#|$)/ && tolower($1) == id { print; exit }' "$CONF" 2>/dev/null; }
+
+# Catálogo AppStream de Arch (archlinux-appstream-data) → <id en minúsculas> TAB <paquete>.
+# Se rehace solo cuando el catálogo cambia.
+catalogo() {
+  local idx=$CACHE/catalogo.tsv xml=(/usr/share/swcatalog/xml/*.xml.gz)
+  [ -e "${xml[0]}" ] || { : > "$idx"; echo "$idx"; return; }
+  if [ ! -s "$idx" ] || [ -n "$(find "${xml[@]}" -newer "$idx" 2>/dev/null)" ]; then
+    python3 -I - "${xml[@]}" > "$idx.tmp" <<'PY' && mv -f "$idx.tmp" "$idx"
+import gzip, sys, xml.etree.ElementTree as ET
+for f in sys.argv[1:]:
+    try:
+        for _, c in ET.iterparse(gzip.open(f)):
+            if c.tag != "component":
+                continue
+            i, p = c.findtext("id"), c.findtext("pkgname")
+            if i and p:
+                i = i.strip().lower()
+                print(f"{i}\t{p.strip()}")
+                if i.endswith(".desktop"):
+                    print(f"{i[:-8]}\t{p.strip()}")
+            c.clear()
+    except Exception:
+        pass
+PY
+  fi
+  echo "$idx"
+}
+
+# Versión y repositorio de un paquete de los repositorios ("" si no está)
+en_repos() { pacman -Si -- "$1" 2>/dev/null | awk -F' *: ' '/^Repository/{r=$2} /^Version/{v=$2} END{if (v) print v, r}'; }
+
+# Datos del AUR: <nombre> TAB <versión> TAB <sitio web>, uno por paquete que exista
+aur_info() {
+  local q=() p
+  for p in "$@"; do q+=(--data-urlencode "arg[]=$p"); done
+  curl -fsS --max-time 8 -G "$AUR/rpc/v5/info" "${q[@]}" 2>/dev/null | python3 -I -c '
+import json, sys
+try:
+    for r in json.load(sys.stdin).get("results", []):
+        print(r["Name"], r["Version"], r.get("URL") or "", sep="\t")
+except Exception:
+    pass'
+}
+
+dominio() { # https://www.anydesk.com/es → anydesk.com
+  local h=${1#*://}; h=${h%%/*}; h=${h%%:*}; h=${h,,}
+  awk -F. '{ if (NF >= 2) print $(NF-1) "." $NF; else print $0 }' <<<"$h"
+}
+
+# Nombres probables del paquete para un id de Flathub (md.obsidian.Obsidian → obsidian, obsidian-bin…)
+candidatos() {
+  local partes s
+  IFS=. read -ra partes <<<"${1,,}"
+  for s in "${partes[@]: -1}" "${partes[@]: -2:1}"; do
+    [ ${#s} -ge 3 ] || continue
+    case $s in client|desktop|app|studio|org|com|io) continue ;; esac
+    printf '%s\n' "$s" "$s-bin" "$s-desktop" "$s-desktop-bin"
+  done | awk '!visto[$0]++'
+}
+
+buscar() {
+  local id=$1 web=${2:-} f pref repo aur v d n u
+  f=$(fila "$id")
+  read -r _ pref repo aur <<<"$f"
+  [ "${repo:--}" = - ] && repo=""
+  [ "${aur:--}" = - ] && aur=""
+  [ -z "$repo" ] && repo=$(awk -F'\t' -v id="${id,,}" '$1 == id { print $2; exit }' "$(catalogo)")
+  [ -n "$web" ] && d=$(dominio "$web")
+  # Sin paquete conocido: se prueba por nombre (obsidian, anydesk-bin…) y solo vale si su sitio web es
+  # el mismo que dice Flathub (así no se instala otra cosa que se llame igual)
+  if [ -z "$repo" ] && [ -z "$aur" ] && [ -n "$web" ]; then
+    while read -r n; do
+      u=$(pacman -Si -- "$n" 2>/dev/null | sed -n 's/^URL *: //p')
+      [ -n "$u" ] && [ "$(dominio "$u")" = "$d" ] && { repo=$n; break; }
+    done < <(candidatos "$id")
+  fi
+  if [ -n "$repo" ] && v=$(en_repos "$repo") && [ -n "$v" ]; then
+    echo "repo $repo $v"
+  else repo=""; fi
+  if [ -n "$aur" ]; then
+    aur_info "$aur" | awk -F'\t' '{ print "aur", $1, $2; exit }'
+  elif [ -z "$repo" ] && [ -n "$web" ]; then
+    mapfile -t c < <(candidatos "$id")
+    [ ${#c[@]} -gt 0 ] && aur_info "${c[@]}" | while IFS=$'\t' read -r n v u; do
+      [ -n "$u" ] && [ "$(dominio "$u")" = "$d" ] && { echo "aur $n $v"; break; }
+    done
+  fi
+  echo "preferido ${pref:--}"
+}
+
+# Nombre e icono de una app nativa, de su .desktop
+desktop_de() { pacman -Qlq -- "$1" 2>/dev/null | grep -m1 -E '^/usr/share/applications/[^/]+\.desktop$'; }
+
+instalados() {
+  declare -A ver ajeno visto
+  local n v id p d nombre icono
+  while read -r n v; do ver[$n]=$v; done < <(pacman -Q 2>/dev/null)
+  while read -r n; do ajeno[$n]=1; done < <(pacman -Qmq 2>/dev/null)
+  # id → paquete: lo que instaló la tienda, apps.conf y el catálogo; solo los instalados
+  local pares=() propia
+  while read -r propia id p; do
+    [ -n "$id" ] && [ -n "${ver[$p]:-}" ] && [ -z "${visto[${id,,}]:-}" ] || continue
+    visto[${id,,}]=1; pares+=("$propia $id $p")
+  done < <({
+    [ -f "$REGISTRO" ] && sed 's/^/1 /' "$REGISTRO"
+    awk '!/^[[:space:]]*(#|$)/ { if ($3 != "-") print 1, $1, $3; if ($4 != "-") print 1, $1, $4 }' "$CONF" 2>/dev/null
+    sed 's/^/0 /; s/\t/ /' "$(catalogo)"
+  })
+  # Los .desktop de esos paquetes, de una vez (nombre e icono: el del mismo id, o el primero)
+  declare -A lanzadores
+  local lista=() x
+  for x in "${pares[@]}"; do lista+=("${x##* }"); done
+  [ ${#lista[@]} -gt 0 ] || return 0
+  while read -r p d; do lanzadores[$p]+="$d "; done < <(pacman -Ql -- $(printf '%s\n' "${lista[@]}" | sort -u) 2>/dev/null |
+    grep -E ' /usr/share/applications/[^/]+\.desktop$')
+  for x in "${pares[@]}"; do
+    read -r propia id p <<<"$x"; d=""
+    for n in ${lanzadores[$p]:-}; do
+      [ -z "$d" ] && d=$n
+      x=${id,,}; [ "$(basename "${n,,}" .desktop)" = "${x%.desktop}" ] && { d=$n; break; }
+    done
+    nombre=$p; icono=""
+    if [ -n "$d" ]; then
+      nombre=$(sed -n 's/^Name=//p' "$d" | head -1); icono=$(sed -n 's/^Icon=//p' "$d" | head -1)
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$p" "${ver[$p]}" "$([ -n "${ajeno[$p]:-}" ] && echo aur || echo repo)" "${nombre:-$p}" "$icono" "$propia"
+  done
+}
+
+registrar() { # id paquete | -id
+  local tmp; tmp=$(mktemp)
+  [ -f "$REGISTRO" ] && awk -v id="${1#-}" 'tolower($1) != tolower(id)' "$REGISTRO" > "$tmp"
+  [ "${1:0:1}" = - ] || echo "$1 $2" >> "$tmp"
+  mv -f "$tmp" "$REGISTRO"
+}
+
+# --- AUR: se baja la receta (PKGBUILD), se instala de los repositorios lo que pide y se arma aquí,
+#     como usuario (makepkg no se corre como administrador)
+receta() {
+  local p=$1 d=$CACHE/aur/$1
+  if [ -d "$d/.git" ] && git -C "$d" pull -q --ff-only >/dev/null 2>&1; then :
+  else
+    rm -rf -- "$d"
+    git clone -q --depth 1 "$AUR/$p.git" "$d" >/dev/null 2>&1 || falla "no se pudo bajar $p del AUR (¿hay Internet?)."
+  fi
+  [ -f "$d/PKGBUILD" ] || falla "$p no está en el AUR."
+  echo "$d"
+}
+
+deps_aur() { # lo que falta (de los repositorios) para armar e instalar el paquete
+  local d dep falta=() solo_aur=()
+  d=$(receta "$1") || { echo "$d"; exit 1; }
+  while read -r dep; do
+    [ -n "$dep" ] || continue
+    pacman -T -- "$dep" >/dev/null 2>&1 && continue
+    if pacman -Sp --print-format %n -- "$dep" >/dev/null 2>&1; then falta+=("$dep")
+    else solo_aur+=("${dep%%[<>=]*}"); fi
+  done < <(cd "$d" && makepkg --printsrcinfo 2>/dev/null | sed -nE 's/^\s*(depends|makedepends)(_x86_64)? = //p' | sort -u)
+  [ ${#solo_aur[@]} = 0 ] || falla "$1 necesita ${solo_aur[*]}, que tampoco está en los repositorios."
+  printf '%s\n' "${falta[@]}"
+}
+
+construir_aur() {
+  local d; d=$(receta "$1") || { echo "$d"; exit 1; }
+  progreso 35 "Armando $1…"
+  ( cd "$d" && makepkg -f --noconfirm --nocheck --noprogressbar 2>&1 ) | while IFS= read -r l; do
+    case $l in
+      *"Retrieving sources"*) progreso 40 "Descargando $1…" ;;
+      *"Starting build()"*) progreso 55 "Armando $1…" ;;
+      *"Starting package()"*|*"Entering fakeroot"*) progreso 70 "Empaquetando $1…" ;;
+      *"ERROR"*|*"error"*) printf '%s\n' "$l" >&2 ;;
+    esac
+  done
+  local archivos
+  archivos=$(cd "$d" && makepkg --packagelist 2>/dev/null)
+  local hay=0 f
+  for f in $archivos; do [ -f "$f" ] && { echo "ARCHIVO $f"; hay=1; }; done
+  [ $hay = 1 ] || falla "no se pudo armar $1 (el detalle está en la terminal: cd $d && makepkg)."
+}
+
+instalar() {
+  local origen=$1 p=$2 id=$3
+  valido "$p" || falla "paquete no válido: $p"
+  case $origen in
+    repo)
+      como_root instalar "$p" "$id" || exit 1 ;;
+    aur)
+      progreso 5 "Bajando la receta de $p del AUR…"
+      local falta archivos=()
+      falta=$(deps_aur "$p") || { echo "$falta"; exit 1; }
+      if [ -n "$falta" ]; then
+        progreso 15 "Instalando lo que necesita…"
+        # shellcheck disable=SC2086
+        como_root deps $falta || falla "no se pudo instalar lo que necesita $p."
+      fi
+      while read -r k f; do
+        case $k in ARCHIVO) archivos+=("$f") ;; PROGRESO|ERROR) echo "$k $f" ;; esac
+        [ "$k" = ERROR ] && exit 1
+      done < <(construir_aur "$p")
+      [ ${#archivos[@]} -gt 0 ] || exit 1
+      progreso 85 "Instalando $p…"
+      como_root instalar-archivos "$id" "${archivos[@]}" || exit 1 ;;
+    *) falla "origen desconocido: $origen" ;;
+  esac
+  registrar "$id" "$p"
+  progreso 100 "Listo"
+}
+
+quitar() {
+  valido "$1" || falla "paquete no válido: $1"
+  como_root quitar "$1" "$2" || exit 1
+  registrar "-$2"
+  progreso 100 "Listo"
+}
+
+abrir() {
+  local d; d=$(desktop_de "$1")
+  if [ -n "$d" ] && command -v gtk-launch >/dev/null; then exec gtk-launch "$(basename "$d" .desktop)"; fi
+  [ -n "$d" ] && command -v kioclient >/dev/null && exec kioclient exec "$d"
+  command -v "$1" >/dev/null && exec "$1"
+  falla "no se encontró cómo abrir $1."
+}
+
+case ${1:-} in
+  buscar) [ -n "${2:-}" ] || falla "falta el id"; buscar "$2" "${3:-}" ;;
+  instalados) instalados ;;
+  instalar) [ $# = 4 ] || falla "uso: instalar <repo|aur> <paquete> <id>"; instalar "$2" "$3" "$4" ;;
+  quitar) [ $# = 3 ] || falla "uso: quitar <paquete> <id>"; quitar "$2" "$3" ;;
+  abrir) abrir "${2:-}" ;;
+  deps-aur) valido "${2:-}" || falla "paquete no válido"; deps_aur "$2" ;;
+  construir-aur) valido "${2:-}" || falla "paquete no válido"; construir_aur "$2" ;;
+  *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

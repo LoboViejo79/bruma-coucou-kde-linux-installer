@@ -1,0 +1,11 @@
+#!/bin/sh
+# Coucou: pone Meta+C para abrir el Centro de control (se corre con la cuenta, en su sesión).
+# Si la cuenta ya le puso otro atajo, o Meta+C ya lo usa otra cosa, no toca nada.
+RC=${XDG_CONFIG_HOME:-$HOME/.config}/kglobalshortcutsrc
+grep -q '^\[services\]\[coucou-control.desktop\]' "$RC" 2>/dev/null && exit 0
+grep -Eq '(=|,|\\t)Meta\+C(,|\\t|$)' "$RC" 2>/dev/null && exit 0
+command -v busctl >/dev/null || exit 0
+D="Centro de control"
+busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel doRegister as 4 coucou-control.desktop _launch "$D" "$D" >/dev/null 2>&1 || exit 0
+# Meta (0x10000000) + C (0x43)
+busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel setShortcutKeys 'asa(ai)u' 4 coucou-control.desktop _launch "$D" "$D" 1 1 268435523 2 >/dev/null 2>&1 || true

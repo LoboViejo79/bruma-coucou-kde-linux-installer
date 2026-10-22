@@ -1,0 +1,201 @@
+# Coucou: pantalla de arranque. Mismo dibujo que el splash de Plasma (violeta
+# noche, Mochi flotando, "Coucou" y los tres puntos de escribiendo) más una barra
+# de carga. Llega hasta el 70%: el splash de Plasma la sigue hasta el 100%.
+# Detrás de Mochi sale una onda cada tanto; la barra es una píldora con brillo
+# en la punta. El fondo (auroras violetas) es el mismo que usa el splash.
+
+W = Window.GetWidth();
+H = Window.GetHeight();
+X0 = Window.GetX();
+Y0 = Window.GetY();
+CX = X0 + W / 2;
+CY = Y0 + H / 2;
+mode = Plymouth.GetMode();
+booting = (mode == "boot" || mode == "updates" || mode == "system-upgrade");
+
+Window.SetBackgroundTopColor(0.102, 0.090, 0.251);
+Window.SetBackgroundBottomColor(0.031, 0.027, 0.102);
+
+bg = Sprite(Image("bg.png").Scale(W, H));
+bg.SetPosition(X0, Y0, -10);
+
+# Coucou entra desde negro, al arrancar y al apagar/reiniciar: sin el logo de
+# ninguna marca (antes el primer cuadro era el logo del fabricante de una PC en
+# particular, y salía igual en cualquier otra).
+veil = Sprite(Image("black.png").Scale(W, H));
+veil.SetPosition(X0, Y0, 50);
+
+ring_img = Image("ring.png");
+ring = Sprite();
+ring.SetZ(0);
+
+glow_img = Image("glow.png");
+glow = Sprite(glow_img);
+mochi_img = Image("mochi.png");
+blink_img = Image("mochi-blink.png");
+mochi = Sprite(mochi_img);
+mochi.SetZ(5);
+shadow_img = Image("shadow.png");
+shadow = Sprite(shadow_img);
+name_img = Image("name.png");
+name = Sprite(name_img);
+dot_img = Image("dot.png");
+for (i = 0; i < 3; i++) dots[i] = Sprite(dot_img);
+
+track_img = Image("track.png");
+fl_img = Image("fill-l.png");
+fm_img = Image("fill-m.png");
+fr_img = Image("fill-r.png");
+head_img = Image("head.png");
+track = Sprite(track_img);
+fill_l = Sprite(fl_img);
+fill_m = Sprite();
+fill_r = Sprite(fr_img);
+head = Sprite(head_img);
+BW = track_img.GetWidth();
+BH = track_img.GetHeight();
+CAP = fl_img.GetWidth();
+
+if (booting) {
+  for (i = 0; i < 3; i++) status_img[i] = Image("status-" + i + ".png");
+} else if (mode == "reboot") {
+  status_img[0] = Image("status-4.png");
+} else {
+  status_img[0] = Image("status-3.png");
+}
+status = Sprite(status_img[0]);
+status_old = Sprite();
+global.status_idx = 0;
+global.old_idx = 0;
+global.status_fade = 1;
+
+global.t = 0;
+global.target = 0;
+global.shown = 0;
+
+fun clamp01(v) {
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
+}
+
+# Opacidad de cada punto: 1 -> 0.25 -> 1 en 720 ms, desfasados 180 ms (ciclo 1080 ms)
+fun dot_alpha(k, time) {
+  p = time * 1000 - k * 180;
+  p = p - Math.Int(p / 1080) * 1080;
+  if (p < 0) p = p + 1080;
+  if (p < 360) return 1 - 0.75 * (p / 360);
+  if (p < 720) return 0.25 + 0.75 * ((p - 360) / 360);
+  return 1;
+}
+
+fun progress_cb(duration, progress) {
+  if (progress > global.target) global.target = progress;
+}
+Plymouth.SetBootProgressFunction(progress_cb);
+
+fun refresh_cb() {
+  global.t += 1 / 50;
+  veil.SetOpacity(1 - clamp01((global.t - 0.15) / 0.55));
+  time = global.t;
+  intro = clamp01(time / 0.6);
+  ease = 1 - (1 - intro) * (1 - intro) * (1 - intro);
+
+  # Mochi flota entre -30 y -42 px (ciclo de 1,4 s), con el grupo entero
+  off = -36 + 6 * Math.Cos(time * 2 * 3.14159 / 1.4);
+  pop = (1 - ease) * 26;
+  mx = CX - mochi_img.GetWidth() / 2;
+  my = CY + off - mochi_img.GetHeight() / 2 + pop;
+  mochi.SetPosition(mx, my, 5);
+
+  # Parpadeo cada ~3,6 s
+  bp = time - Math.Int(time / 3.6) * 3.6;
+  if (time > 1 && bp > 3.45) mochi.SetImage(blink_img);
+  else mochi.SetImage(mochi_img);
+
+  glow.SetPosition(CX - glow_img.GetWidth() / 2, CY + off - glow_img.GetHeight() / 2 + pop, 1);
+  glow.SetOpacity(ease * (0.8 + 0.2 * Math.Cos(time * 2 * 3.14159 / 2.8)));
+
+  # La sombra se achica cuando Mochi sube
+  lift = (off + 30) / -12;
+  shadow.SetPosition(CX - shadow_img.GetWidth() / 2, CY - 30 + mochi_img.GetHeight() / 2 - 14, 4);
+  shadow.SetOpacity(ease * (0.55 - 0.3 * lift));
+
+  # Onda que sale de Mochi cada 2,6 s
+  rp = time - Math.Int(time / 2.6) * 2.6;
+  rk = clamp01(rp / 1.8);
+  rs = Math.Int(150 + 200 * (1 - (1 - rk) * (1 - rk)));
+  ring.SetImage(ring_img.Scale(rs, rs));
+  ring.SetPosition(CX - rs / 2, CY + off + pop - rs / 2, 0);
+  ring.SetOpacity(ease * 0.45 * (1 - rk));
+  mochi.SetOpacity(ease);
+
+  ny = my + mochi_img.GetHeight() + 24;
+  name.SetPosition(CX - name_img.GetWidth() / 2, ny, 5);
+  name.SetOpacity(clamp01((time - 0.2) / 0.7));
+
+  dy = ny + name_img.GetHeight() + 18;
+  dots_in = clamp01((time - 0.3) / 0.9);
+  for (i = 0; i < 3; i++) {
+    dots[i].SetPosition(CX - 25 + i * 20 - 5, dy, 5);
+    dots[i].SetOpacity(dots_in * dot_alpha(i, time));
+  }
+
+  # Barra fija (no flota) para que se lea tranquila
+  by = CY + 175;
+  bx = CX - BW / 2;
+  ui_in = clamp01((time - 0.5) / 0.6);
+  if (booting) {
+    # El estimado de Plymouth, suavizado; siempre avanza un poquito
+    floor = 0.9 * (1 - 1 / (1 + time / 6));
+    goal = global.target;
+    if (floor > goal) goal = floor;
+    global.shown += (goal - global.shown) * 0.06;
+    p = global.shown * 0.7;
+    track.SetPosition(bx, by, 2);
+    track.SetOpacity(ui_in);
+    fw = Math.Int(BW * p);
+    if (fw < 2 * CAP + 1) fw = 2 * CAP + 1;
+    fill_l.SetPosition(bx, by, 3);
+    fill_m.SetImage(fm_img.Scale(fw - 2 * CAP, BH));
+    fill_m.SetPosition(bx + CAP, by, 3);
+    fill_r.SetPosition(bx + fw - CAP, by, 3);
+    fill_l.SetOpacity(ui_in);
+    fill_m.SetOpacity(ui_in);
+    fill_r.SetOpacity(ui_in);
+    # Brillo que late en la punta
+    head.SetPosition(bx + fw - CAP - head_img.GetWidth() / 2, by + BH / 2 - head_img.GetHeight() / 2, 4);
+    head.SetOpacity(ui_in * (0.7 + 0.3 * Math.Cos(time * 2 * 3.14159 / 1.2)));
+
+    idx = 0;
+    if (global.shown > 0.35) idx = 1;
+    if (global.shown > 0.8) idx = 2;
+    if (idx != global.status_idx) {
+      status_old.SetImage(status_img[global.status_idx]);
+      global.old_idx = global.status_idx;
+      global.status_idx = idx;
+      status.SetImage(status_img[idx]);
+      global.status_fade = 0;
+    }
+  } else {
+    track.SetOpacity(0);
+    fill_l.SetOpacity(0);
+    fill_m.SetOpacity(0);
+    fill_r.SetOpacity(0);
+    head.SetOpacity(0);
+  }
+
+  global.status_fade = clamp01(global.status_fade + 1 / 15);
+  si = status_img[global.status_idx];
+  sy = by + 20;
+  if (!booting) sy = by - 4;
+  status.SetPosition(CX - si.GetWidth() / 2, sy, 5);
+  status.SetOpacity(ui_in * global.status_fade);
+  status_old.SetPosition(CX - status_img[global.old_idx].GetWidth() / 2, sy, 5);
+  status_old.SetOpacity(ui_in * (1 - global.status_fade));
+}
+Plymouth.SetRefreshFunction(refresh_cb);
+
+# Mensajes / contraseñas: no hay disco cifrado, pero por las dudas que no se cuelgue
+fun message_cb(text) { }
+Plymouth.SetMessageFunction(message_cb);

@@ -1,0 +1,95 @@
+BRUMA COUCOU · versión 1.0.133 (2026-10-21)
+===============
+
+Bruma Coucou instala el diseño de Coucou en un CachyOS que ya tenga KDE Plasma 6: su barra con Mochi, temas, iconos,
+cursores, fuentes, las apps de Coucou (Configuración, Tienda de aplicaciones, Administrador de tareas,
+Bienvenido), la pantalla de inicio de sesión y la animación al encender.
+
+Cómo se usa
+-----------
+1. Descomprime el archivo (clic derecho > Extraer aquí).
+2. Abre la carpeta y haz doble clic en "Instalar Bruma Coucou" (o en una terminal: ./instalar.sh).
+3. Elige claro u oscuro y los detalles. Pide la contraseña de administrador una sola vez
+   (si la escribes mal, avisa y la vuelve a pedir).
+4. Al terminar, reinicia el equipo: el inicio de sesión de Coucou y la animación al encender se ven
+   recién después de reiniciar (cerrando sesión todavía aparece el de Plasma).
+
+Desde la terminal, sin ventana:
+   ./instalar.sh --diseno coucou
+   ./instalar.sh --diseno coucou --modo oscuro --sin-arranque
+
+Como superusuario (no pide ninguna contraseña):
+   sudo ./instalar.sh                       (abre la ventana)
+   sudo ./instalar.sh --diseno coucou       (instala para la cuenta que usó sudo)
+   sudo ./instalar.sh --diseno coucou --usuario NOMBRE   (para otra cuenta)
+
+Si Bruma Coucou ya está instalado
+---------------------------
+No se instala todo de nuevo: la ventana dice qué versión tienes y, si este instalador trae algo más
+nuevo, el botón "Actualizar" pone solo eso (nunca baja de versión) y reinicia la barra. Tu diseño,
+fondo, colores, apps, inicio de sesión y arranque quedan como estaban, y no hace falta cerrar sesión.
+Si ya tienes todo, dice "Ya está al día" y no cambia nada. "Reinstalar todo" hace la instalación
+completa de nuevo y LIMPIA (para reparar algo): antes aparta lo que quedó de
+instalaciones viejas (archivos de Coucou que ya no son de ningún paquete, sus ajustes viejos en tu
+cuenta, accesos y servicios que apuntan a cosas que ya no existen). Todo queda en una copia:
+  sistema: /var/lib/coucou-instalador/respaldo-<fecha>/huerfanos
+  cuenta:  ~/.local/share/coucou-instalador/respaldo-<fecha>
+Tus archivos, los chats de Coucou y las contraseñas guardadas no se tocan.
+   ./instalar.sh --actualizar               (lo mismo, desde la terminal)
+   ./instalar.sh --reinstalar --diseno coucou
+
+Necesita internet (baja las dependencias de los repositorios de CachyOS/Arch).
+
+Copias de seguridad, historial y desinstalar
+--------------------------------------------
+- La PRIMERA vez que se instala, antes de cambiar nada, se guarda cómo estaba la PC sin Coucou
+  (ajustes de tu cuenta, inicio de sesión, arranque, lista de paquetes y servicios):
+     /var/lib/coucou-instalador/original      (nunca se pisa ni se borra)
+  En una PC que ya tenía Coucou de un instalador viejo se arma con las copias de la primera instalación.
+- Además, CADA instalación o actualización guarda una copia de tus ajustes de ese momento
+  (~/.local/share/coucou-instalador/respaldo-<fecha>; quedan las 10 más nuevas).
+- Historial (cuándo fue la primera instalación y cada actualización) y copias que hay: en la
+  ventana del instalador, botón "Copias de seguridad" (con Coucou ya instalado). Desde ahí también
+  se abre la carpeta de las copias y se desinstala. O desde la terminal:
+     ./desinstalar.sh --ver
+- Para volver a como estaba la PC antes de Coucou: doble clic en "Desinstalar Bruma Coucou"
+  (o ./desinstalar.sh). Primero muestra el historial y pregunta. Pide la contraseña una vez.
+     ./desinstalar.sh --simular     dice qué haría, sin cambiar nada
+     ./desinstalar.sh --con-apps    también quita las apps que se instalaron con Coucou
+  Quita los paquetes de Coucou, vuelve a poner el inicio de sesión y la animación de arranque de
+  antes, saca del arranque lo que sumó Coucou y deja tus ajustes como estaban. Las apps que elegiste
+  se quedan (salvo --con-apps); tus archivos y los chats de Coucou no se tocan. Antes guarda cómo
+  está todo en /var/lib/coucou-instalador/desinstalado-<fecha>. Al terminar, reinicia el equipo.
+
+Qué hay en la carpeta
+---------------------
+  Instalar Bruma Coucou.desktop     el doble clic: abre instalar.sh
+  instalar.sh               el que se usa: abre la ventana o instala desde la terminal
+  Desinstalar Bruma Coucou.desktop  el doble clic para desinstalar: abre desinstalar.sh
+  desinstalar.sh            deja la PC como estaba antes de Coucou (--ver: historial y copias)
+  copia.sh                  las copias de seguridad y el historial (lo usan los demás)
+  estado.sh                 ¿ya está instalado? ¿qué trae de nuevo esta carpeta? (no cambia nada)
+  apps-instaladas.sh        qué apps de la página "Aplicaciones" ya están en el equipo
+  paso-sistema.sh           parte de administrador (paquetes, inicio de sesión, arranque)
+  paso-cuenta.sh            parte de tu cuenta (diseño, barra, avisos por voz)
+  flatpaks.txt              apps de Flathub que se ofrecen
+  VERSION                   versión del instalador
+  bin/                      la ventana del instalador
+  imagenes/                 imágenes de la ventana
+  paquetes/                 Coucou y sus temas (coucou-claro y kde-win11 son obligatorios)
+  perfil/                   ajustes de la barra y fondo de pantalla del diseño
+  fuente/                   el código para hacer cambios (no hace falta para instalar; ver
+                            fuente/LEEME.md). Después de un cambio: fuente/construir.sh
+No muevas ni cambies de nombre estos archivos: la ventana los busca justo ahí. Si falta alguno
+(un zip a medio bajar o a medio extraer), el instalador lo dice al abrirse y no cambia nada.
+Para pasarlo a otra PC: fuente/construir.sh --zip arma un .zip sin fuente/ (más liviano).
+El registro (coucou-instalador.log) aparece aquí al instalar; no es parte del instalador.
+
+Si algo no te gusta
+-------------------
+- La barra se ajusta en Configuración > Personalización > Barra de tareas.
+- Tu configuración de antes quedó en ~/.local/share/coucou-instalador/respaldo-<fecha>.
+- Los archivos del sistema que se cambiaron (arranque, inicio de sesión) están en
+  /var/lib/coucou-instalador/respaldo-<fecha>.
+- Todo lo que pasó en la instalación queda en coucou-instalador.log, en esta misma carpeta
+  (junto a instalar.sh), y una copia de la parte de administrador en /var/log/coucou-instalador.log.

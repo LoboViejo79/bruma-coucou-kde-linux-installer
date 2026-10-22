@@ -1,0 +1,12 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Path
+Target = usr/share/icons/Papirus/index.theme
+Target = usr/lib/coucou/iconos-coucou
+
+[Action]
+Description = Coucou: iconos Papirus con carpetas violetas...
+When = PostTransaction
+Exec = /usr/lib/coucou/iconos-coucou

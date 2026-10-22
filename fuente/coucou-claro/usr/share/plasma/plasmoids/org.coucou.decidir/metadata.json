@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "Coucou" }],
+        "Category": "Fun and Games",
+        "Description": "Una ruleta que decide por ti: gira y elige una opción",
+        "Icon": "roll",
+        "Id": "org.coucou.decidir",
+        "License": "GPL-2.0+",
+        "Name": "Coucou: Sí o No",
+        "Version": "1.0",
+        "Website": "https://github.com/Louis-CFM/coucou"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Bienvenido a CachyOS
+GenericName=Primeros pasos
+Comment=Configura el aspecto, el rendimiento, los juegos y el mantenimiento del sistema
+Exec=win11-welcome
+Icon=org.cachyos.hello
+Categories=System;Settings;
+Keywords=hello;cachyos;bienvenida;welcome;tweaks;mantenimiento;
+StartupWMClass=win11-welcome

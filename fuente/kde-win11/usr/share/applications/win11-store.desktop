@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Tienda
+GenericName=Descargar aplicaciones y juegos
+Comment=Descarga aplicaciones y juegos de Flathub
+Exec=win11-store %u
+Icon=win11-store
+Categories=System;PackageManager;Qt;
+Keywords=tienda;store;aplicaciones;apps;juegos;instalar;flathub;flatpak;descargar;
+MimeType=x-scheme-handler/appstream;
+StartupNotify=true

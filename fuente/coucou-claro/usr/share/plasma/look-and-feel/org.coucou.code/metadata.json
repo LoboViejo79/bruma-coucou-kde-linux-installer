@@ -1,0 +1,14 @@
+{
+ "KPackageStructure": "Plasma/LookAndFeel",
+ "KPlugin": {
+  "Authors": [ { "Name": "Coucou" } ],
+  "Category": "Global Themes",
+  "Description": "La interfaz de Coucou: barra de vidrio, violeta y Mochi, también al bloquear e iniciar sesión",
+  "EnabledByDefault": true,
+  "Id": "org.coucou.code",
+  "License": "GPL-2.0+",
+  "Name": "Coucou Code",
+  "Version": "1.0"
+ },
+ "X-Plasma-APIVersion": "2"
+}

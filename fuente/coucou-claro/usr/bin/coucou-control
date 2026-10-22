@@ -1,0 +1,20 @@
+#!/bin/sh
+# Coucou: abre el Centro de control (o lo cierra, si ya está abierto).
+#   coucou-control           abrir / cerrar
+#   coucou-control editar    abrirlo editando (quitar, ordenar y cambiar el tamaño de los bloques)
+#   coucou-control wifi      abrirlo en una vista: wifi, bluetooth, sonido, energia o juego
+#   coucou-control barra=abajo margen=67 derecha=220 [flecha=53 fondo1=#AARRGGBB fondo2=… borde=…]
+#                            apoyado sobre la barra, alineado con su botón, con el fondo y la
+#                            flechita de los paneles de la barra (así lo abre la barra)
+QML=/usr/share/coucou/control/main.qml
+if pkill -u "$(id -u)" -f "qml.* $QML" 2>/dev/null; then exit 0; fi
+# Recién cerrado (hace menos de medio segundo): el mismo clic que lo cerró no lo reabre
+MARCA=${XDG_RUNTIME_DIR:-/tmp}/coucou-control.cerrado
+if [ -f "$MARCA" ]; then
+  antes=$(cat "$MARCA" 2>/dev/null); ahora=$(date +%s%3N)
+  case "$antes" in ''|*[!0-9]*) ;; *) [ $((ahora - antes)) -lt 500 ] && exit 0 ;; esac
+fi
+# En Wayland, como capa flotante sobre todo (layer-shell); en X11, una ventana sin bordes
+[ -n "${WAYLAND_DISPLAY:-}" ] && export QT_WAYLAND_SHELL_INTEGRATION=layer-shell
+export QML_XHR_ALLOW_FILE_WRITE=1 QML_XHR_ALLOW_FILE_READ=1
+exec /usr/lib/qt6/bin/qml "$QML" -- "$@"

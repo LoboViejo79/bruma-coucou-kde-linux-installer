@@ -1,0 +1,10 @@
+#!/bin/sh
+# Avisos por voz de Coucou: prepara la voz (edge-tts en una carpeta propia) y arranca el servicio.
+#   coucou-voz              prepara la voz si falta y arranca el servicio
+#   coucou-voz --preparar   solo la prepara (el instalador, para que ande desde el primer momento)
+V="${XDG_DATA_HOME:-$HOME/.local/share}/coucou-voz/venv"
+if [ ! -x "$V/bin/python" ] || ! "$V/bin/python" -c 'import edge_tts' 2>/dev/null; then
+  python3 -m venv "$V" && "$V/bin/pip" install --quiet --disable-pip-version-check edge-tts || exit 1
+fi
+[ "${1:-}" = --preparar ] && exit 0
+exec "$V/bin/python" /usr/lib/coucou/coucou-voz.py "$@"

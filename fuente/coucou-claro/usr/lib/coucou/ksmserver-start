@@ -1,0 +1,16 @@
+#!/bin/sh
+# Coucou: arranca ksmserver bloqueado cuando la sesión vino del autologin de SDDM
+# (con contraseña ya se pidió en el login, no se pide dos veces).
+# Para no bloquear: crear ~/.config/coucou/no-lock-on-start
+lock=
+if [ ! -e "${XDG_CONFIG_HOME:-$HOME/.config}/coucou/no-lock-on-start" ] && [ -n "${XDG_SESSION_ID:-}" ] &&
+   [ "$(loginctl show-session "$XDG_SESSION_ID" -p Service --value 2>/dev/null)" = sddm-autologin ] &&
+   [ ! -e "$XDG_RUNTIME_DIR/coucou-locked-$XDG_SESSION_ID" ]; then
+    lock=--lockscreen
+    # Solo al arrancar la sesión: si ksmserver se reinicia no vuelve a bloquear
+    : > "$XDG_RUNTIME_DIR/coucou-locked-$XDG_SESSION_ID"
+fi
+# (Antes se cargaba aquí una libKScreenLocker propia para que el fondo previo al bloqueo no
+# fuera negro. Compilada en una sola PC, en otra con otras versiones de Qt/KDE podía romper el
+# bloqueo: se quitó. Se usa siempre la del sistema.)
+exec /usr/bin/ksmserver $lock "$@"

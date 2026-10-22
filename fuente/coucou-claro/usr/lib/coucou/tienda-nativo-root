@@ -1,0 +1,148 @@
+#!/bin/bash
+# Tienda de Coucou: la parte de administrador de las apps nativas. Se corre con pkexec (desde
+# tienda-nativo) o como root (desde el instalador).
+#
+#   tienda-nativo-root instalar <paquete> <id>              de los repositorios, y la deja andando
+#   tienda-nativo-root instalar-archivos <id> <archivo>…    paquetes armados del AUR (solo de ~/.cache/coucou-tienda/aur)
+#   tienda-nativo-root deps <paquete>…                      lo que necesita un paquete del AUR para armarse
+#   tienda-nativo-root quitar <paquete> <id>
+#   tienda-nativo-root arreglar <id>                        lo que necesita una app para andar bien
+#   tienda-nativo-root sesion-x11                           la sesión "Xfce (X11)" (para AnyDesk)
+#
+# Escribe "PROGRESO <0-100> <texto>" y, si falla, "ERROR <texto>".
+set -uo pipefail
+export LC_ALL=C
+[ "$(id -u)" = 0 ] || { echo "ERROR hace falta ser administrador"; exit 1; }
+
+progreso() { printf 'PROGRESO %s %s\n' "$1" "$2"; }
+falla() { printf 'ERROR %s\n' "$*"; exit 1; }
+valido() { [[ $1 =~ ^[a-z0-9@_+][a-z0-9@._+-]*$ ]]; }
+
+# Otro programa usando pacman (actualizaciones, Discover…): se espera hasta 3 minutos. El candado
+# no se borra nunca desde aquí: si quedó de un corte, se dice cómo quitarlo.
+esperar_pacman() {
+  local i
+  for i in $(seq 180); do
+    [ -e /var/lib/pacman/db.lck ] || return 0
+    [ "$i" = 1 ] && progreso 5 "Esperando a que termine otra instalación…"
+    sleep 1
+  done
+  if pgrep -x pacman >/dev/null; then falla "otro programa está instalando paquetes. Probá de nuevo en unos minutos."
+  else falla "pacman quedó trabado de antes. Si no hay nada instalándose: sudo rm /var/lib/pacman/db.lck"; fi
+}
+
+# pacman con su avance traducido a PROGRESO; lo demás va a la salida de errores (queda en el registro)
+pacman_con_avance() { # $1 = desde %, resto = argumentos de pacman
+  local desde=$1 l salida r; shift
+  salida=$(mktemp)
+  pacman --noconfirm --noprogressbar "$@" </dev/null 2>&1 | tee "$salida" | while IFS= read -r l; do
+    case $l in
+      *"Retrieving packages"*|*"downloading"*) progreso $((desde + 10)) "Descargando…" ;;
+      *"checking package integrity"*|*"checking keys"*) progreso $((desde + 30)) "Comprobando…" ;;
+      *"installing "*|*"upgrading "*) progreso $((desde + 45)) "Instalando…" ;;
+      *"removing "*) progreso $((desde + 45)) "Desinstalando…" ;;
+      *"post-transaction hooks"*) progreso $((desde + 60)) "Terminando…" ;;
+    esac
+    printf '%s\n' "$l" >&2
+  done
+  r=${PIPESTATUS[0]}
+  if [ "$r" != 0 ]; then
+    local motivo
+    motivo=$(grep -m1 -E '^error:' "$salida" | sed 's/^error: //')
+    rm -f "$salida"
+    case $motivo in
+      *"target not found"*) falla "el paquete no está en los repositorios." ;;
+      *"conflicting"*|*"conflict"*) falla "choca con otro paquete instalado: $motivo" ;;
+      *"failed retrieving"*|*"failed to retrieve"*|*"could not resolve"*) falla "no se pudo descargar (¿hay Internet?)." ;;
+      *"not enough free disk space"*) falla "no hay espacio suficiente en el disco." ;;
+      *"breaks dependency"*|*"required by"*) falla "otras apps lo necesitan: $motivo" ;;
+      *) falla "${motivo:-pacman no pudo terminar.}" ;;
+    esac
+  fi
+  rm -f "$salida"
+}
+
+instalado() { pacman -Q -- "$1" >/dev/null 2>&1; }
+
+# --- La sesión X11 (Plasma 6.8 ya no tiene X11 y AnyDesk no comparte la pantalla en Wayland). La
+#     pantalla de inicio muestra solo esa y Plasma (Wayland). Lo usa también paso-sistema.sh.
+sesion_x11() {
+  if ! command -v startxfce4 >/dev/null || ! command -v xrandr >/dev/null || ! command -v xinput >/dev/null || ! command -v xset >/dev/null; then
+    progreso 90 "Agregando la sesión X11 para AnyDesk…"
+    esperar_pacman
+    pacman -S --needed --noconfirm --noprogressbar xfce4-session xfwm4 xfce4-panel xfdesktop xfce4-settings xfconf xorg-xrandr xorg-xinput xorg-xset xorg-setxkbmap </dev/null >&2 \
+      || { echo "!! no se pudo instalar Xfce (la sesión X11 para AnyDesk)" >&2; return 1; }
+  fi
+  if command -v startxfce4 >/dev/null && [ -f /usr/share/coucou/xsessions/coucou-x11.desktop ]; then
+    mkdir -p /etc/sddm.conf.d
+    # (Xfce trae también sus sesiones, X11 y Wayland: no se muestran; solo Plasma y la de Coucou)
+    printf '%s\n' "# Coucou: la sesión X11 para AnyDesk (y no las de Xfce tal cual; ver /usr/lib/coucou/sesion-x11)" \
+      "[X11]" "SessionDir=/usr/share/coucou/xsessions" \
+      "[Wayland]" "SessionDir=/usr/share/coucou/wayland-sessions" > /etc/sddm.conf.d/coucou-x11.conf
+    echo "Sesión X11 para AnyDesk: se elige al iniciar sesión (\"Xfce (X11)\")" >&2
+  fi
+}
+
+# --- Lo que cada app necesita para andar bien, venga de donde venga (Flathub o nativa)
+arreglar() {
+  case ${1,,} in
+    com.anydesk.anydesk)
+      # El servicio: deja conectarse sin nadie frente al equipo y arranca con el sistema
+      if instalado anydesk-bin || instalado anydesk; then
+        systemctl list-unit-files anydesk.service >/dev/null 2>&1 && systemctl enable --now anydesk.service >&2 2>&1
+      fi
+      sesion_x11 ;;
+  esac
+  update-desktop-database -q /usr/share/applications 2>/dev/null
+  return 0
+}
+
+# Paquetes del AUR armados por la tienda: solo de la carpeta de la tienda, y del usuario que lo pidió
+archivo_valido() {
+  local f r dueño
+  f=$(readlink -f -- "$1") || return 1
+  [[ $f == /home/*/.cache/coucou-tienda/aur/*/*.pkg.tar.* ]] || return 1
+  [[ $f != *..* ]] && [ -f "$f" ] || return 1
+  if [ -n "${PKEXEC_UID:-}" ]; then
+    dueño=$(stat -c %u -- "$f"); [ "$dueño" = "$PKEXEC_UID" ] || return 1
+    r=$(getent passwd "$PKEXEC_UID" | cut -d: -f6); [[ $f == "$r"/* ]] || return 1
+  fi
+}
+
+case ${1:-} in
+  instalar)
+    [ $# = 3 ] && valido "$2" || falla "uso: instalar <paquete> <id>"
+    esperar_pacman
+    progreso 10 "Preparando…"
+    pacman_con_avance 10 -S --needed -- "$2"
+    progreso 85 "Dejándola lista…"
+    arreglar "$3" ;;
+  instalar-archivos)
+    [ $# -ge 3 ] || falla "uso: instalar-archivos <id> <archivo>…"
+    id=$2; shift 2
+    for f in "$@"; do archivo_valido "$f" || falla "archivo no permitido: $f"; done
+    esperar_pacman
+    pacman_con_avance 30 -U --needed -- "$@"
+    progreso 95 "Dejándola lista…"
+    arreglar "$id" ;;
+  deps)
+    shift
+    [ $# -gt 0 ] || exit 0
+    for p in "$@"; do [[ $p =~ ^[a-zA-Z0-9@._+-]+([<>=]+[a-zA-Z0-9.:_+~-]+)?$ ]] || falla "nombre no válido: $p"; done
+    esperar_pacman
+    pacman_con_avance 15 -S --needed --asdeps -- "$@" ;;
+  quitar)
+    [ $# = 3 ] && valido "$2" || falla "uso: quitar <paquete> <id>"
+    instalado "$2" || falla "$2 no está instalado."
+    case $2 in anydesk|anydesk-bin) systemctl disable --now anydesk.service >/dev/null 2>&1 ;; esac
+    esperar_pacman
+    progreso 10 "Desinstalando…"
+    # -Rs: también lo que se instaló solo para esta app y ya no usa nadie; la configuración de la
+    # cuenta (~/.config…) queda, por si se vuelve a instalar
+    pacman_con_avance 10 -Rs -- "$2" ;;
+  arreglar)
+    [ -n "${2:-}" ] || falla "falta el id"
+    arreglar "$2" ;;
+  sesion-x11) sesion_x11 ;;
+  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

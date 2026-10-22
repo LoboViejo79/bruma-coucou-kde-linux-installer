@@ -1,0 +1,11 @@
+# Coucou: el inicio de sesión de Coucou, sin el teclado virtual de Qt (que podía tragarse la clave)
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/share/sddm/themes/coucou-login/Main.qml
+
+[Action]
+Description = Coucou Code: ajustando el inicio de sesión...
+When = PostTransaction
+Exec = /usr/lib/coucou/login-theme --fix-input

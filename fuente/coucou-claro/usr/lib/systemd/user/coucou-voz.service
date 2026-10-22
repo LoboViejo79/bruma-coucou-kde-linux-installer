@@ -1,0 +1,12 @@
+[Unit]
+Description=Coucou: avisos por voz (notificaciones y actualizaciones, voz de Sebastián)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/lib/coucou/coucou-voz
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=graphical-session.target

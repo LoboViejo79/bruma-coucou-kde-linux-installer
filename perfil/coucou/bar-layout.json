@@ -1,0 +1,1 @@
+{"indicators":["wifi","volume","battery"],"actions":["night","monitor","settings","shot","power"],"order":["search","game","apps","system","tray","notifs"],"hidden":["shot","lock","term","folder","monitor","settings"],"apps":[],"showDate":true}

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Preparando Windows 11
+Exec=/usr/bin/win11-firstrun
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2

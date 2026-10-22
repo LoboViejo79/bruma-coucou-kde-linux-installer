@@ -1,0 +1,21 @@
+# Recompilación local de kwin-effect-rounded-corners para la versión de KWin instalada
+pkgname=kwin-effect-rounded-corners
+pkgver=0.10.0
+pkgrel=1.1
+pkgdesc="Rounds the corners of your windows in KDE Plasma (recompilado para la KWin instalada)"
+arch=('x86_64')
+url="https://github.com/matinlotfali/KDE-Rounded-Corners"
+license=('GPL-3.0-only')
+depends=('kwin')
+makedepends=('cmake' 'extra-cmake-modules' 'git')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/matinlotfali/KDE-Rounded-Corners/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cmake -S "KDE-Rounded-Corners-$pkgver" -B build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DKWIN_X11=OFF
+  cmake --build build -j"$(nproc)"
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+}

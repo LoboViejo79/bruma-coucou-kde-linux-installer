@@ -1,0 +1,28 @@
+module Win11Settings
+typeinfo win11-settings.qmltypes
+prefer :/qt/qml/Win11Settings/
+Main 1.0 qml/Main.qml
+NavItem 1.0 qml/NavItem.qml
+SettingsCard 1.0 qml/SettingsCard.qml
+PageHeader 1.0 qml/PageHeader.qml
+LinksPage 1.0 qml/LinksPage.qml
+SystemPage 1.0 qml/SystemPage.qml
+PersonalizationPage 1.0 qml/PersonalizationPage.qml
+ColorsPage 1.0 qml/ColorsPage.qml
+TaskbarPage 1.0 qml/TaskbarPage.qml
+ThemesPage 1.0 qml/ThemesPage.qml
+CoucouPage 1.0 qml/CoucouPage.qml
+AppsPage 1.0 qml/AppsPage.qml
+UpdatePage 1.0 qml/UpdatePage.qml
+SearchPage 1.0 qml/SearchPage.qml
+Pages 1.0 qml/Pages.js
+KcmPage 1.0 qml/KcmPage.qml
+HomePage 1.0 qml/HomePage.qml
+FluentIcon 1.0 qml/FluentIcon.qml
+CaptionButtons 1.0 qml/CaptionButtons.qml
+ResizeEdges 1.0 qml/ResizeEdges.qml
+ClipboardPage 1.0 qml/ClipboardPage.qml
+IconsPage 1.0 qml/IconsPage.qml
+WidgetsPage 1.0 qml/WidgetsPage.qml
+depends QtQuick
+

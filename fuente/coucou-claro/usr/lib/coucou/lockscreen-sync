@@ -1,0 +1,123 @@
+#!/bin/sh
+# Coucou Code: la pantalla de bloqueo de Coucou.
+#
+# Plasma 6 toma la pantalla de bloqueo del "shell" (org.kde.plasma.desktop), no
+# del tema global. Para no tocar el del sistema, se arma una copia en la
+# carpeta del usuario, idéntica salvo contents/lockscreen, que es la de Coucou.
+# La copia lleva la marca .coucou-lockscreen; nada sin esa marca se toca nunca.
+#
+#   lockscreen-sync on        arma (o rehace) la copia
+#   lockscreen-sync off       vuelve la de Plasma: la copia queda igual a la del sistema
+#                             (no se borra: Plasma la está usando, y sin ella no puede
+#                             dibujar paneles nuevos hasta reiniciarse)
+#   lockscreen-sync refresh   la rehace solo si ya estaba (al iniciar Coucou)
+#   lockscreen-sync --all     (root, gancho de pacman) rehace la de cada usuario
+set -eu
+SYS=/usr/share/plasma/shells/org.kde.plasma.desktop
+OURS=/usr/share/coucou/lockscreen
+# Desde Plasma 6.8 el diálogo de apagar/reiniciar/suspender también sale del shell (contents/logout)
+OURS_LOGOUT=/usr/share/coucou/logout
+MARK=.coucou-lockscreen
+# Plasma con el que la pantalla de bloqueo de Coucou está probada (major.minor). Con otro (una PC
+# con Plasma más nuevo o más viejo) o sin algún módulo que usa, se deja la de Plasma: una pantalla
+# de bloqueo que no carga es "El bloqueador de pantalla está dañado" y nadie puede volver a entrar.
+PROBADO="6.7 6.8"
+apta() {
+    v=$(LC_ALL=C pacman -Q plasma-workspace 2>/dev/null | awk '{print $2}')
+    v=${v%%-*}
+    ok=
+    for p in $PROBADO; do
+        case "$v" in "$p"|"$p".*) ok=1 ;; esac
+    done
+    [ -n "$ok" ] || { echo "Plasma ${v:-desconocido}: se usa su pantalla de bloqueo" >&2; return 1; }
+    for m in org/kde/plasma/private/sessions org/kde/plasma/private/keyboardindicator Qt5Compat/GraphicalEffects QtQuick/VirtualKeyboard; do
+        [ -d "/usr/lib/qt6/qml/$m" ] || { echo "falta $m: se usa la pantalla de bloqueo de Plasma" >&2; return 1; }
+    done
+    for f in PasswordSync.qml config.qml; do
+        [ -f "$SYS/contents/lockscreen/$f" ] || { echo "falta $f en Plasma: se usa su pantalla de bloqueo" >&2; return 1; }
+    done
+    return 0
+}
+
+build() {   # $1 = destino, $2 = "plain": idéntica a la del sistema (sin el bloqueo de Coucou)
+    dest=$1
+    plain=${2:-}
+    case "$dest" in */.local/share/plasma/shells/org.kde.plasma.desktop) ;; *) echo "destino inválido" >&2; exit 2 ;; esac
+    # Un enlace al shell del sistema (lo dejan algunas instalaciones) no son datos del usuario, pero
+    # impedía armar la copia: se aparta con respaldo. Una carpeta propia sin la marca no se toca.
+    if [ -L "$dest" ]; then
+        bk="$HOME/.local/share/coucou/respaldo-shell-$(date +%Y%m%d-%H%M%S)"
+        mkdir -p "$(dirname "$bk")" && mv "$dest" "$bk" && echo "enlace apartado: $bk"
+    fi
+    if [ -e "$dest" ] && [ ! -f "$dest/$MARK" ]; then
+        echo "$dest no es de Coucou: no se toca" >&2; exit 1
+    fi
+    [ -d "$SYS" ] && [ -d "$OURS" ] || exit 0
+    tmp="$dest.coucou-new"
+    rm -rf "$tmp"
+    mkdir -p "$(dirname "$dest")"
+    cp -a "$SYS" "$tmp"
+    # Sin probar con este Plasma: la copia queda igual a la del sistema (y se rehace sola,
+    # con la de Coucou, cuando vuelva a ser apta)
+    if [ "$plain" != plain ] && ! apta; then plain=auto; fi
+    if [ "$plain" = plain ]; then
+        : > "$tmp/$MARK.plain"
+    elif [ "$plain" = auto ]; then
+        :
+    else
+        find "$tmp/contents/lockscreen" -maxdepth 1 -name '*.qml' ! -name PasswordSync.qml ! -name config.qml -delete
+        cp -a "$OURS/." "$tmp/contents/lockscreen/"
+        # El de Coucou reemplaza solo Logout.qml: usa timer.js del sistema (los mismos nombres)
+        if [ -d "$OURS_LOGOUT" ] && [ -f "$tmp/contents/logout/Logout.qml" ] && [ -f "$tmp/contents/logout/timer.js" ]; then
+            cp -a "$OURS_LOGOUT/." "$tmp/contents/logout/"
+        fi
+    fi
+    : > "$tmp/$MARK"
+    if [ -e "$dest" ]; then
+        rm -rf "$dest.coucou-old"
+        mv "$dest" "$dest.coucou-old"
+    fi
+    mv "$tmp" "$dest"
+    rm -rf "$dest.coucou-old"
+}
+
+# Tu foto, la misma en todos lados: la de ~/.face.icon (o ~/.face) se le pasa a AccountsService,
+# que es de donde la leen el inicio de sesión (SDDM no puede entrar a tu carpeta) y la pantalla
+# de bloqueo. Para la cuenta propia no pide contraseña. Si no hay foto, no se toca nada.
+foto() {
+    for f in "$HOME/.face.icon" "$HOME/.face"; do
+        [ -f "$f" ] && [ -s "$f" ] || continue
+        obj=$(busctl --system call org.freedesktop.Accounts /org/freedesktop/Accounts org.freedesktop.Accounts FindUserByName s "$(id -un)" 2>/dev/null | awk '{print $2}' | tr -d '"')
+        [ -n "$obj" ] || return 0
+        reg=/var/lib/AccountsService/icons/$(id -un)
+        # Ya está esa misma foto: nada que hacer
+        [ -f "$reg" ] && cmp -s "$f" "$reg" && return 0
+        busctl --system call org.freedesktop.Accounts "$obj" org.freedesktop.Accounts.User SetIconFile s "$f" >/dev/null 2>&1 || true
+        return 0
+    done
+}
+
+case "${1:-}" in
+    --all)
+        for d in /home/*/.local/share/plasma/shells/org.kde.plasma.desktop; do
+            [ -f "$d/$MARK" ] || continue
+            owner=$(stat -c %U "$d")
+            if [ -f "$d/$MARK.plain" ]; then
+                runuser -u "$owner" -- "$0" --into "$d" plain || true
+            else
+                runuser -u "$owner" -- "$0" --into "$d" || true
+            fi
+        done ;;
+    --into)
+        build "$2" "${3:-}" ;;
+    on|off|refresh)
+        dest="${XDG_DATA_HOME:-$HOME/.local/share}/plasma/shells/org.kde.plasma.desktop"
+        case "$1" in
+            on) build "$dest" ;;
+            refresh) foto
+                     if [ -f "$dest/$MARK.plain" ]; then build "$dest" plain
+                     elif [ -f "$dest/$MARK" ]; then build "$dest"; fi ;;
+            off) if [ -f "$dest/$MARK" ]; then build "$dest" plain; fi ;;
+        esac ;;
+    *) echo "uso: lockscreen-sync on|off|refresh" >&2; exit 2 ;;
+esac

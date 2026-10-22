@@ -1,0 +1,405 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: es\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "General"
+msgstr "General"
+
+msgid "Icon:"
+msgstr "Icono:"
+
+msgctxt "@item:inmenu Open icon chooser dialog"
+msgid "Choose…"
+msgstr "Elegir…"
+
+msgctxt "@item:inmenu Reset icon to default"
+msgid "Clear Icon"
+msgstr "Quitar icono"
+
+msgid "Apps icon size:"
+msgstr "Tamaño de iconos de aplicaciones:"
+
+msgid "Small"
+msgstr "Pequeño"
+
+msgid "Medium"
+msgstr "Mediano"
+
+msgid "Large"
+msgstr "Grande"
+
+msgid "Huge"
+msgstr "Enorme"
+
+msgid "Docs icon size:"
+msgstr "Tamaño de iconos de documentos:"
+
+msgid "Menu position"
+msgstr "Posición del menú"
+
+msgid "Default"
+msgstr "Predeterminada"
+
+msgid "Center"
+msgstr "Centro"
+
+msgid "Center bottom"
+msgstr "Centro abajo"
+
+msgid "Show labels in two lines"
+msgstr "Mostrar etiquetas en dos líneas"
+
+msgid "Number of columns"
+msgstr "Número de columnas"
+
+msgid "Number of rows"
+msgstr "Número de filas"
+
+msgid "All Apps"
+msgstr "Todas las aplicaciones"
+
+msgid "Recent Documents:"
+msgstr "Recomendado:"
+
+msgid "Show Recent Documents section"
+msgstr "Mostrar la sección Recomendado"
+
+msgid "Default view mode:"
+msgstr "Vista predeterminada:"
+
+msgid "List"
+msgstr "Lista"
+
+msgid "Grid"
+msgstr "Cuadrícula"
+
+msgid "Category"
+msgstr "Categorías"
+
+msgid "Default sort order:"
+msgstr "Orden predeterminado:"
+
+msgid "A → Z"
+msgstr "A → Z"
+
+msgid "Z → A"
+msgstr "Z → A"
+
+msgid "Newest"
+msgstr "Más recientes"
+
+msgid "Oldest"
+msgstr "Más antiguas"
+
+msgid "By type"
+msgstr "Por tipo"
+
+msgid "Search"
+msgstr "Búsqueda"
+
+msgid "Home page:"
+msgstr "Página de inicio:"
+
+msgid "Show recently opened apps"
+msgstr "Mostrar aplicaciones abiertas recientemente"
+
+msgid "Enable shell command runner ( > cmd )"
+msgstr "Permitir ejecutar comandos ( > comando )"
+
+msgid "Show Quick Actions bar (Screenshot, Lock, Terminal…)"
+msgstr "Mostrar barra de acciones rápidas (captura, bloquear, terminal…)"
+
+msgid "Show weather widget (requires weather service)"
+msgstr "Mostrar el tiempo (requiere servicio meteorológico)"
+
+msgid "Weather location:"
+msgstr "Ubicación del tiempo:"
+
+msgid "Custom"
+msgstr "Personalizada"
+
+msgid "Custom latitude:"
+msgstr "Latitud:"
+
+msgid "Custom longitude:"
+msgstr "Longitud:"
+
+msgid "Footer power buttons"
+msgstr "Botones de inicio/apagado"
+
+msgid "Show:"
+msgstr "Mostrar:"
+
+msgid "Sleep / Suspend"
+msgstr "Suspender"
+
+msgid "Restart"
+msgstr "Reiniciar"
+
+msgid "Shutdown"
+msgstr "Apagar"
+
+msgid "Unhide all hidden applications"
+msgstr "Mostrar todas las aplicaciones ocultas"
+
+msgid "Unhidden!"
+msgstr "¡Listo!"
+
+msgid "About"
+msgstr "Acerca de"
+
+msgid "Checking..."
+msgstr "Comprobando..."
+
+msgid "Check for Updates"
+msgstr "Buscar actualizaciones"
+
+msgid "Click OK to open release page"
+msgstr "Pulsa Aceptar para abrir la página de la versión"
+
+msgid "Unpin from Start"
+msgstr "Desanclar de Inicio"
+
+msgid "Pin to Start"
+msgstr "Anclar a Inicio"
+
+msgid "Edit Applications…"
+msgstr "Editar aplicaciones…"
+
+msgid "Good morning"
+msgstr "Buenos días"
+
+msgid "Good afternoon"
+msgstr "Buenas tardes"
+
+msgid "Good evening"
+msgstr "Buenas noches"
+
+msgid "%1 app"
+msgid_plural "%1 apps"
+msgstr[0] "%1 aplicación"
+msgstr[1] "%1 aplicaciones"
+
+msgid "Sunday"
+msgstr "domingo"
+
+msgid "Monday"
+msgstr "lunes"
+
+msgid "Tuesday"
+msgstr "martes"
+
+msgid "Wednesday"
+msgstr "miércoles"
+
+msgid "Thursday"
+msgstr "jueves"
+
+msgid "Friday"
+msgstr "viernes"
+
+msgid "Saturday"
+msgstr "sábado"
+
+msgid "%1 night session"
+msgstr "Noche del %1"
+
+msgid "%1 morning picks"
+msgstr "Mañana del %1"
+
+msgid "%1 afternoon picks"
+msgstr "Tarde del %1"
+
+msgid "%1 evening picks"
+msgstr "Noche del %1"
+
+msgid "Your top picks"
+msgstr "Tus favoritas"
+
+msgid "Frequently used"
+msgstr "Más usadas"
+
+msgid "Your morning session"
+msgstr "Para la mañana"
+
+msgid "Good morning apps"
+msgstr "Para la mañana"
+
+msgid "Midday picks"
+msgstr "Para el mediodía"
+
+msgid "Afternoon session"
+msgstr "Para la tarde"
+
+msgid "Evening apps"
+msgstr "Para la noche"
+
+msgid "Late night"
+msgstr "De madrugada"
+
+msgid "Lock the screen"
+msgstr "Bloquear la pantalla"
+
+msgid "Suspend to RAM"
+msgstr "Suspender"
+
+msgid "Restart the computer"
+msgstr "Reiniciar el equipo"
+
+msgid "Shut down the computer"
+msgstr "Apagar el equipo"
+
+msgid "Take a screenshot"
+msgstr "Hacer una captura de pantalla"
+
+msgid "Open System Settings"
+msgstr "Abrir Configuración"
+
+msgid "Open file manager"
+msgstr "Abrir el Explorador de archivos"
+
+msgid "Open a terminal"
+msgstr "Abrir una terminal"
+
+msgid "Log out"
+msgstr "Cerrar sesión"
+
+msgid "Type here to search ..."
+msgstr "Buscar aplicaciones, configuración y documentos"
+
+msgid "Screenshot"
+msgstr "Captura de pantalla"
+
+msgid "Lock Screen"
+msgstr "Bloquear"
+
+msgid "Open Terminal"
+msgstr "Terminal"
+
+msgid "Open Files"
+msgstr "Explorador de archivos"
+
+msgid "Calculator"
+msgstr "Calculadora"
+
+msgid "System Settings"
+msgstr "Configuración"
+
+msgid "Pinned"
+msgstr "Anclado"
+
+msgid "New folder"
+msgstr "Nueva carpeta"
+
+msgid "All apps"
+msgstr "Todas las aplicaciones"
+
+msgid "Recent documents"
+msgstr "Recomendado"
+
+msgid "Show more"
+msgstr "Más"
+
+msgid "New Folder"
+msgstr "Nueva carpeta"
+
+msgid "All"
+msgstr "Todo"
+
+msgid "Apps"
+msgstr "Aplicaciones"
+
+msgid "Files"
+msgstr "Archivos"
+
+msgid "Settings"
+msgstr "Configuración"
+
+msgid "Actions"
+msgstr "Acciones"
+
+msgid "Enter or click to copy result"
+msgstr "Intro o clic para copiar el resultado"
+
+msgid "Type a command  ·  ↓ navigate  ·  /calc expr  ·  Enter run"
+msgstr "Escribe un comando  ·  ↓ navegar  ·  /calc expresión  ·  Intro ejecutar"
+
+msgid "Alt+1–9 to launch"
+msgstr "Alt+1–9 para abrir"
+
+msgid "Press Enter to run: %1"
+msgstr "Pulsa Intro para ejecutar: %1"
+
+msgid "Type a shell command after '>'"
+msgstr "Escribe un comando después de '>'"
+
+msgid "No %1 results for \"%2\""
+msgstr "No hay resultados de %1 para «%2»"
+
+msgid "No results for \"%1\""
+msgstr "No hay resultados para «%1»"
+
+msgid "Folder name"
+msgstr "Nombre de la carpeta"
+
+msgid "Choose apps from Pinned:"
+msgstr "Elige aplicaciones ancladas:"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Create"
+msgstr "Crear"
+
+msgid "Rename folder"
+msgstr "Cambiar nombre"
+
+msgid "Delete folder"
+msgstr "Eliminar carpeta"
+
+msgid "Unpin all apps in folder"
+msgstr "Desanclar todas las aplicaciones de la carpeta"
+
+msgid "Rename Folder"
+msgstr "Cambiar nombre de la carpeta"
+
+msgid "Save"
+msgstr "Guardar"
+
+msgid "Drag apps here to add them"
+msgstr "Arrastra aplicaciones aquí para añadirlas"
+
+msgid "Drag apps from the list onto this folder to add them."
+msgstr "Arrastra aplicaciones de la lista a esta carpeta para añadirlas."
+
+msgid "Rename"
+msgstr "Cambiar nombre"
+
+msgid "Add apps — %1"
+msgstr "Añadir aplicaciones — %1"
+
+msgid "Add apps to folder"
+msgstr "Añadir aplicaciones a la carpeta"
+
+msgid "Filter…"
+msgstr "Filtrar…"
+
+msgid "Sleep"
+msgstr "Suspender"
+
+msgid "Remove from Favorites"
+msgstr "Desanclar de Inicio"
+
+msgid "Add to Favorites"
+msgstr "Anclar a Inicio"
+
+msgid "On All Activities"
+msgstr "En todas las actividades"
+
+msgid "On the Current Activity"
+msgstr "En la actividad actual"
+
+msgid "Show in Favorites"
+msgstr "Mostrar en Anclado"

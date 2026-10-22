@@ -1,0 +1,10 @@
+[Unit]
+Description=Coucou: revisar actualizaciones cada 3 horas
+
+[Timer]
+OnStartupSec=10min
+OnUnitActiveSec=3h
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

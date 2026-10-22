@@ -1,0 +1,16 @@
+[Desktop Entry]
+# Coucou para KDE. Oculta: en el menú ya está "Coucou".
+#  - El portal de atajos identifica a la app por su id (fr.louisraille.coucou): sin esta entrada no
+#    registra los atajos globales.
+#  - KWin (Wayland) le da el protocolo de los paneles al ejecutable de Exec: con él Coucou le dice
+#    dónde está el icono de cada app en la barra, para la animación de minimizar y restaurar.
+#  - Y la captura de una ventana (ScreenShot2): las miniaturas de la vista previa de la barra.
+Type=Application
+Name=Coucou
+Exec=/usr/bin/coucou
+Icon=coucou
+Terminal=false
+NoDisplay=true
+StartupNotify=false
+X-KDE-Wayland-Interfaces=org_kde_plasma_window_management
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2

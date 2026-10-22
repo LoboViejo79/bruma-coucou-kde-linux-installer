@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=XSession
+Name=Xfce (X11)
+Comment=Escritorio Xfce en X11 (para programas que no andan en Wayland, como AnyDesk)
+Exec=/usr/lib/coucou/sesion-x11
+TryExec=/usr/bin/startxfce4
+DesktopNames=XFCE

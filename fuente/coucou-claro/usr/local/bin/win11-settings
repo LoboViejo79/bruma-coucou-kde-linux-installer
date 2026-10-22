@@ -1,0 +1,10 @@
+#!/bin/sh
+# Configuración de Coucou. Sus páginas se leen del QML (no de la versión precompilada), y las del
+# proyecto (fuente/configuracion, armadas en /usr/share/coucou/configuracion.rcc) van antes que
+# las que trae el programa: así se pueden cambiar sin recompilarlo (ver fuente/codigo/
+# configuracion-paginas.cpp). Sin la biblioteca o el .rcc, usa sus páginas de siempre.
+LIB=/usr/lib/coucou/libcoucou-configuracion.so
+if [ -f "$LIB" ] && [ -f /usr/share/coucou/configuracion.rcc ]; then
+    LD_PRELOAD="$LIB${LD_PRELOAD:+:$LD_PRELOAD}" QML_DISABLE_DISK_CACHE=1 exec /usr/lib/coucou/win11-settings "$@"
+fi
+QML_DISABLE_DISK_CACHE=1 exec /usr/lib/coucou/win11-settings "$@"

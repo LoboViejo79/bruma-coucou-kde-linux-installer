@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      http://www.kde.org/standards/kcfg/1.0/kcfg.xsd" >
+    <kcfgfile name=""/>
+
+    <group name="General">
+        <entry name="use24hFormat" type="Bool">
+            <label>Show the time in 24-hour format</label>
+            <default>true</default>
+        </entry>
+        <entry name="showSeconds" type="Bool">
+            <label>Show seconds</label>
+            <default>false</default>
+        </entry>
+        <entry name="showDate" type="Bool">
+            <label>Show the date below the time</label>
+            <default>true</default>
+        </entry>
+        <entry name="dateFormat" type="String">
+            <label>Date format: short, isoDate, longDate or custom</label>
+            <default>short</default>
+        </entry>
+        <entry name="customDateFormat" type="String">
+            <label>Custom date format string used when dateFormat is custom</label>
+            <default>dd.MM.yyyy</default>
+        </entry>
+        <entry name="showDayOfWeek" type="Bool">
+            <label>Prepend the abbreviated day of week to the date</label>
+            <default>false</default>
+        </entry>
+        <entry name="showWeekNumbers" type="Bool">
+            <label>Show week numbers in the calendar</label>
+            <default>false</default>
+        </entry>
+        <entry name="notificationLimit" type="Int">
+            <label>Maximum number of notifications shown in the popup</label>
+            <default>50</default>
+        </entry>
+        <entry name="showNotificationHistory" type="Bool">
+            <label>Show notification history: keep expired and dismissed notifications in the list</label>
+            <default>true</default>
+        </entry>
+        <entry name="showNotificationJobs" type="Bool">
+            <label>Show jobs (file transfers, downloads) in the notification list</label>
+            <default>true</default>
+        </entry>
+        <entry name="showLowPriorityNotifications" type="Bool">
+            <label>Show low priority notifications</label>
+            <default>true</default>
+        </entry>
+        <entry name="showDoNotDisturb" type="Bool">
+            <label>Show the Do Not Disturb switch at the bottom of the popup</label>
+            <default>true</default>
+        </entry>
+        <entry name="timeFontSizePt" type="Int">
+            <label>Font size of the time in points; 0 means automatic</label>
+            <default>0</default>
+        </entry>
+        <entry name="dateFontSizePt" type="Int">
+            <label>Font size of the date in points; 0 means automatic</label>
+            <default>0</default>
+        </entry>
+        <entry name="boldTime" type="Bool">
+            <label>Draw the time in bold</label>
+            <default>false</default>
+        </entry>
+        <entry name="textAlignment" type="Int">
+            <label>Alignment of the clock inside the applet: 0 = right (like Windows 11), 1 = center, 2 = left</label>
+            <default>0</default>
+        </entry>
+        <entry name="fontFamily" type="String">
+            <label>Font family; empty means the Plasma theme font</label>
+            <default></default>
+        </entry>
+        <entry name="useCustomTextColor" type="Bool">
+            <label>Use a custom color for the time and date</label>
+            <default>false</default>
+        </entry>
+        <entry name="textColor" type="Color">
+            <label>Custom color of the time and date</label>
+            <default>#eff0f1</default>
+        </entry>
+    </group>
+</kcfg>

@@ -1,0 +1,14 @@
+{
+    "KPlugin": {
+        "Id": "coucou-barra",
+        "Name": "Barra de Coucou entre pantallas",
+        "Description": "La barra de Coucou entra y sale desde su borde (arriba o abajo) al pasar de una pantalla a otra, sin parpadeos",
+        "Category": "Appearance",
+        "License": "MIT",
+        "EnabledByDefault": true
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js",
+    "X-KDE-Ordering": 60,
+    "KPackageStructure": "KWin/Effect"
+}

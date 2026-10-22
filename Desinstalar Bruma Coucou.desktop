@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Desinstalar Bruma Coucou
+Comment=Deja la PC como estaba antes de instalar Bruma Coucou
+Exec=bash -c 'exec bash "$(dirname "$1")/desinstalar.sh"' _ %k
+Icon=edit-undo
+Terminal=false

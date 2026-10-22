@@ -1,0 +1,6 @@
+# Apps Flatpak que se ofrecen en la página "Aplicaciones" del instalador: <id de la opción> <app de Flathub>
+vscode com.visualstudio.code
+discord com.discordapp.Discord
+spotify com.spotify.Client
+anydesk com.anydesk.Anydesk
+vlc org.videolan.VLC

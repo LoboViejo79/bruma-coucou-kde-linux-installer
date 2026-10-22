@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Coucou"
+            }
+        ],
+        "Category": "Fun and Games",
+        "Description": "Una tarjeta con imagen que te pregunta cómo estás",
+        "Icon": "face-smile",
+        "Id": "org.coucou.animo",
+        "License": "GPL-2.0+",
+        "Name": "Coucou: ¿Cómo estás hoy?",
+        "Version": "1.0",
+        "Website": "https://github.com/Louis-CFM/coucou"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

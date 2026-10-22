@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Coucou"
+            }
+        ],
+        "Category": "Fun and Games",
+        "Description": "Un dinosaurio de pixeles: dale de comer y sube de nivel",
+        "Icon": "applications-games",
+        "Id": "org.coucou.mascota",
+        "License": "GPL-2.0+",
+        "Name": "Coucou: Mascota pixel",
+        "Version": "1.0",
+        "Website": "https://github.com/Louis-CFM/coucou"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

@@ -1,0 +1,14 @@
+{
+    "KPlugin": {
+        "Id": "win11-open",
+        "Name": "Abrir apps como en macOS",
+        "Description": "Al abrir una aplicación la ventana sale del icono o del punto donde se hizo clic y crece hasta su tamaño; al cerrarla se encoge con un fundido",
+        "Category": "Appearance",
+        "License": "GPL",
+        "EnabledByDefault": false
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js",
+    "X-KDE-Ordering": 60,
+    "KPackageStructure": "KWin/Effect"
+}

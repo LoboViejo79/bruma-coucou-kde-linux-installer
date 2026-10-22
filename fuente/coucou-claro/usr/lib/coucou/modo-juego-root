@@ -1,0 +1,21 @@
+#!/bin/sh
+# Coucou: la parte de administrador del modo juego (la corre /usr/lib/coucou/modo-juego con
+# pkexec, sin contraseña: solo sabe hacer esto, sin otros argumentos).
+#   modo-juego-root limpiar         vacía la caché de archivos y junta la memoria suelta
+#   modo-juego-root gpu alto|auto   la tarjeta de video AMD al máximo, o como siempre
+set -u
+case "${1:-} ${2:-}" in
+  "limpiar ")
+    sync
+    echo 1 > /proc/sys/vm/drop_caches
+    [ -w /proc/sys/vm/compact_memory ] && echo 1 > /proc/sys/vm/compact_memory
+    exit 0 ;;
+  "gpu alto"|"gpu auto")
+    nivel=high; [ "$2" = auto ] && nivel=auto
+    hecho=1
+    for f in /sys/class/drm/card*/device/power_dpm_force_performance_level; do
+      [ -w "$f" ] && echo "$nivel" > "$f" 2>/dev/null && hecho=0
+    done
+    exit $hecho ;;
+  *) echo "uso: modo-juego-root limpiar | gpu alto|auto" >&2; exit 2 ;;
+esac

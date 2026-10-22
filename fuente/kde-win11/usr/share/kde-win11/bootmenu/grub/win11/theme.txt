@@ -1,0 +1,65 @@
+# Menú de arranque con el aspecto del de Windows ("Elegir un sistema operativo"): fondo azul,
+# título grande y fino, opciones con ícono blanco y la elegida resaltada.
+# Los recursos (fuentes, íconos, resaltado) los genera ../../make-assets.sh
+
+title-text: ""
+desktop-color: "#0a58ab"
+terminal-font: "Unifont Regular 16"
+terminal-left: "8%"
+terminal-top: "12%"
+terminal-width: "84%"
+terminal-height: "76%"
+terminal-border: "0"
+
++ label {
+    left = 8%
+    top = 9%
+    width = 84%
+    height = 56
+    text = "Elegir un sistema operativo"
+    font = "Selawik Light Regular 40"
+    color = "#ffffff"
+}
+
++ boot_menu {
+    left = 8%
+    top = 9%+96
+    width = 50%+160
+    height = 72%-140
+    item_font = "Selawik Regular 24"
+    selected_item_font = "Selawik Regular 24"
+    item_color = "#ffffff"
+    selected_item_color = "#ffffff"
+    icon_width = 40
+    icon_height = 40
+    item_icon_space = 20
+    item_height = 60
+    item_padding = 10
+    item_spacing = 6
+    selected_item_pixmap_style = "select_*.png"
+    scrollbar = true
+    scrollbar_width = 4
+    scrollbar_thumb = "scroll_thumb_*.png"
+    scrollbar_frame = "scroll_frame_*.png"
+}
+
++ label {
+    left = 8%
+    top = 100%-104
+    width = 84%
+    height = 26
+    text = "Flechas: elegir  ·  Entrar: iniciar  ·  E: editar la opción  ·  C: línea de comandos"
+    font = "Selawik Regular 18"
+    color = "#d6e6f8"
+}
+
++ label {
+    id = "__timeout__"
+    left = 8%
+    top = 100%-72
+    width = 84%
+    height = 26
+    text = "La opción elegida se iniciará automáticamente en %d s"
+    font = "Selawik Regular 18"
+    color = "#ffffff"
+}

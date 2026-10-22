@@ -1,0 +1,231 @@
+#!/bin/bash
+# Coucou: modo juego. Deja todo como está a la vista (la barra, el escritorio, tus apps) y hace
+# que el equipo rinda más y use mucha menos RAM: pausa servicios de fondo que no hacen falta
+# mientras se juega (voz, avisos, teléfono, portapapeles…), limpia la memoria, manda a la memoria
+# comprimida (zram) lo que está en segundo plano, pone el procesador y la tarjeta de video al
+# máximo, "No molestar" y que la pantalla no se apague. Al salir vuelve a abrir exactamente lo que
+# pausó. Lo que deja de andar mientras tanto se avisa al activarlo y lo muestran el Centro de
+# control y la ventana de Juegos de la barra (el mismo modo juego: su botón usa este script).
+#
+#   modo-juego activar | desactivar | alternar
+#   modo-juego estado              {"activo":…,"opciones":{…},"libre":MB,"liberado":MB,
+#                                   "pausado":[claves],"aviso":"texto"} (Centro de control y barra)
+#   modo-juego opcion CLAVE 0|1    qué hace (queda en ~/.config/coucou/modo-juego.conf)
+#
+# Lo de administrador (memoria y tarjeta de video) lo hace /usr/lib/coucou/modo-juego-root, que
+# solo sabe hacer eso y no pide contraseña (org.coucou.modo-juego.policy).
+# Lo que pausó queda en $XDG_RUNTIME_DIR/coucou-modo-juego/ (se borra al cerrar sesión: al
+# volver a entrar todo arranca normal). Registro: ~/.cache/coucou-modo-juego.log
+set -uf   # (sin comodines: los patrones de los servicios van tal cual a systemctl)
+RUN=${XDG_RUNTIME_DIR:-/tmp/coucou-$(id -u)}/coucou-modo-juego
+CONF=${XDG_CONFIG_HOME:-$HOME/.config}/coucou/modo-juego.conf
+LOG=${XDG_CACHE_HOME:-$HOME/.cache}/coucou-modo-juego.log
+ESTE=$(readlink -f "$0")
+ROOT=/usr/lib/coucou/modo-juego-root
+
+# clave|qué es|de fábrica|qué deja de andar mientras tanto (para avisarlo; vacío: nada)
+OPCIONES='voz|Los avisos por voz|1|los avisos por voz
+avisos|Los avisos de actualizaciones y copias|1|los avisos de actualizaciones
+estadisticas|Las estadísticas del sistema|1|los widgets de rendimiento
+indexador|El indexador de archivos|1|la búsqueda de archivos nuevos
+telefono|La conexión con el teléfono|1|KDE Connect (el teléfono)
+portapapeles|El historial del portapapeles|1|el historial del portapapeles
+accesibilidad|Las ayudas de accesibilidad|1|las ayudas de accesibilidad del teclado
+limpiar|Limpiar la memoria y lo que quedó colgado|1|
+comprimir|Comprimir lo que está en segundo plano|1|
+rendimiento|Procesador y video al máximo|1|
+nomolestar|No molestar|1|las notificaciones (quedan guardadas sin aparecer)
+pantalla|Que la pantalla no se apague|1|'
+
+# Los servicios que se pausan con cada opción (patrones de systemctl --user)
+SERVICIOS='voz avisos estadisticas telefono portapapeles accesibilidad'
+unidades() {
+  case $1 in
+    voz)           echo 'coucou-voz.service' ;;
+    avisos)        echo 'coucou-actualizaciones.timer app-arch\x2dupdate\x2dtray@autostart.service app-*snapper*notify@autostart.service' ;;
+    estadisticas)  echo 'plasma-ksystemstats.service' ;;
+    telefono)      echo 'app-org.kde.kdeconnect.daemon@autostart.service' ;;
+    portapapeles)  echo 'app-*copyq@autostart.service' ;;
+    accesibilidad) echo 'plasma-kaccess.service' ;;
+  esac
+}
+
+mkdir -p "$(dirname "$LOG")" "$(dirname "$CONF")" 2>/dev/null
+anota() { echo "$(date '+%F %T') $*" >> "$LOG" 2>/dev/null; }
+opcion() { # $1=clave → 1 o 0
+  local v; v=$(sed -n "s/^$1=\([01]\)\$/\1/p" "$CONF" 2>/dev/null | tail -1)
+  [ -n "$v" ] && { echo "$v"; return; }
+  printf '%s\n' "$OPCIONES" | awk -F'|' -v k="$1" '$1 == k { print $3 }'
+}
+libre() { awk '/^MemAvailable:/ { printf "%d", $2 / 1024 }' /proc/meminfo; }
+que_no_anda() { # $1=clave → lo que deja de andar (4.º campo de OPCIONES)
+  printf '%s\n' "$OPCIONES" | awk -F'|' -v k="$1" '$1 == k { print $4 }'
+}
+# Lo que dejó de andar con este modo juego (las claves en $RUN/pausado), como frase
+aviso() {
+  local k t l=()
+  [ -s "$RUN/pausado" ] || return 0
+  while read -r k; do t=$(que_no_anda "$k"); [ -n "$t" ] && l+=("$t"); done < "$RUN/pausado"
+  local f="" i
+  for ((i = 0; i < ${#l[@]}; i++)); do
+    if [ $i = 0 ]; then f=${l[0]}; elif [ $i = $((${#l[@]} - 1)) ]; then f="$f y ${l[$i]}"; else f="$f, ${l[$i]}"; fi
+  done
+  [ -n "$f" ] && f="Mientras dure, en pausa: $f. "
+  grep -qx comprimir "$RUN/pausado" && f="${f}La barra y el escritorio pueden tardar un instante en responder la primera vez. "
+  [ -n "$f" ] && echo "${f}Si algo no anda, es por el modo juego: al apagarlo vuelve todo."
+}
+# Lo que está en segundo plano (la barra, el escritorio, los servicios de Plasma) pasa a la
+# memoria comprimida (zram): el núcleo se lleva lo que hace rato no se usa y la RAM queda para el
+# juego. Lo que se usa vuelve solo (un instante la primera vez). No se toca lo que tiene que
+# responder enseguida (KWin, el sonido) ni las apps que abriste (un juego ya abierto tampoco).
+# Cada cuenta puede hacerlo en sus propios servicios (memory.reclaim del cgroup), sin contraseña.
+comprimir() {
+  local -
+  set +f   # (aquí sí hacen falta los comodines)
+  local d cur antes=0 despues=0
+  swapon --noheadings --show=NAME 2>/dev/null | grep -q . || { anota "comprimir: no hay zram ni swap"; return 1; }
+  local base=/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service
+  for d in "$base"/session.slice/*.service "$base"/app.slice/app-coucou*.service "$base"/background.slice/*.service; do
+    case ${d##*/} in plasma-kwin_wayland*|pipewire*|wireplumber*|*modo-juego*) continue ;; esac
+    [ -w "$d/memory.reclaim" ] && [ -r "$d/memory.current" ] || continue
+    cur=$(cat "$d/memory.current" 2>/dev/null) || continue
+    [ "${cur:-0}" -gt $((32 * 1024 * 1024)) ] || continue     # menos de 32 MB: no vale la pena
+    antes=$((antes + cur))
+    echo $((cur / 2)) > "$d/memory.reclaim" 2>/dev/null       # hasta la mitad: lo que hace rato no se usa
+    despues=$((despues + $(cat "$d/memory.current" 2>/dev/null || echo "$cur")))
+  done
+  anota "comprimido: $(((antes - despues) / 1048576)) MB a la memoria comprimida"
+}
+activo() { [ -f "$RUN/activo" ]; }
+avisar() { timeout 3 notify-send -a "Coucou" -i applications-games -t "${2:-5000}" "Modo juego" "$1" 2>/dev/null || true; }
+root() { pkexec "$ROOT" "$@" 2>/dev/null; }
+
+# Fecha de "No molestar" como la guarda Plasma (plasmanotifyrc)
+dnd_hasta() { kreadconfig6 --file plasmanotifyrc --group DoNotDisturb --key Until 2>/dev/null; }
+dnd_activo() { # Until es "año,mes,día,hora,min,seg"
+  local u; u=$(dnd_hasta); [ -n "$u" ] || return 1
+  local f; f=$(echo "$u" | awk -F, '{ printf "%04d-%02d-%02d %02d:%02d:%02d", $1, $2, $3, $4, $5, int($6) }')
+  [ "$(date -d "$f" +%s 2>/dev/null || echo 0)" -gt "$(date +%s)" ]
+}
+
+activar() {
+  activo && { anota "ya estaba activo"; return 0; }
+  mkdir -p "$RUN" && : > "$RUN/unidades" && : > "$RUN/pausado"
+  local antes; antes=$(libre)
+  anota "activar (disponibles: ${antes} MB)"
+
+  if [ "$(opcion rendimiento)" = 1 ]; then
+    p=$(powerprofilesctl get 2>/dev/null)
+    if [ -n "$p" ] && [ "$p" != performance ] && powerprofilesctl set performance 2>/dev/null; then
+      echo "$p" > "$RUN/perfil"; anota "perfil: $p → performance"
+    fi
+    root gpu alto && touch "$RUN/gpu" && anota "video: al máximo"
+  fi
+  if [ "$(opcion pantalla)" = 1 ]; then
+    systemd-run --user --quiet --collect --unit=coucou-modo-juego-pantalla \
+      systemd-inhibit --what=idle --who=Coucou --why="Modo juego" --mode=block sleep infinity 2>/dev/null &&
+      anota "pantalla: no se apaga"
+  fi
+
+  # Pausar los servicios (solo los que estaban andando, para volver a abrir exactamente esos)
+  local k u
+  for k in $SERVICIOS; do
+    [ "$(opcion "$k")" = 1 ] || continue
+    for u in $(systemctl --user list-units --state=active --plain --no-legend $(unidades "$k") 2>/dev/null | awk '{print $1}'); do
+      echo "$u" >> "$RUN/unidades"
+      grep -qx "$k" "$RUN/pausado" 2>/dev/null || echo "$k" >> "$RUN/pausado"
+    done
+  done
+  if [ -s "$RUN/unidades" ]; then
+    systemctl --user stop $(cat "$RUN/unidades") 2>/dev/null
+    anota "pausados: $(tr '\n' ' ' < "$RUN/unidades")"
+  fi
+  if [ "$(opcion indexador)" = 1 ] && command -v balooctl6 >/dev/null && pgrep -u "$(id -u)" -x baloo_file >/dev/null; then
+    balooctl6 suspend >/dev/null 2>&1 && touch "$RUN/baloo" && echo indexador >> "$RUN/pausado" && anota "indexador: en pausa"
+  fi
+
+  # Limpiar: las vistas previas de archivos que quedaron abiertas sin uso (vuelven solas cuando
+  # hacen falta) y la memoria (caché y fragmentos sueltos: el juego la consigue de una vez)
+  if [ "$(opcion limpiar)" = 1 ]; then
+    pkill -u "$(id -u)" -f '^/usr/lib/kf6/kioworker .*/thumbnail\.so ' 2>/dev/null
+    root limpiar && anota "memoria limpia"
+  fi
+  [ "$(opcion comprimir)" = 1 ] && comprimir && echo comprimir >> "$RUN/pausado"
+  local dnd=0
+  [ "$(opcion nomolestar)" = 1 ] && ! dnd_activo && dnd=1 && echo nomolestar >> "$RUN/pausado"
+  touch "$RUN/activo"
+
+  sleep 1
+  local despues; despues=$(libre)
+  echo $((despues - antes)) > "$RUN/liberado"
+  anota "activo (disponibles: ${despues} MB, +$((despues - antes)) MB)"
+  avisar "Activado: ${despues} MB de RAM libres (+$((despues - antes)) MB). $(aviso)" 12000
+  # "No molestar" después del aviso: si no, el aviso de qué quedó en pausa no se veía
+  if [ $dnd = 1 ]; then
+    sleep 2
+    echo "$(dnd_hasta)" > "$RUN/nomolestar"
+    kwriteconfig6 --notify --file plasmanotifyrc --group DoNotDisturb --key Until "$(date -d '+1 year' '+%Y,%-m,%-d,%-H,%-M,%-S')"
+    anota "no molestar: encendido"
+  fi
+}
+
+desactivar() {
+  activo || { anota "no estaba activo"; return 0; }
+  anota "desactivar"
+  [ -f "$RUN/perfil" ] && powerprofilesctl set "$(cat "$RUN/perfil")" 2>/dev/null
+  [ -f "$RUN/gpu" ] && root gpu auto
+  if [ -f "$RUN/nomolestar" ]; then
+    hasta=$(cat "$RUN/nomolestar")
+    if [ -n "$hasta" ]; then
+      kwriteconfig6 --notify --file plasmanotifyrc --group DoNotDisturb --key Until "$hasta"
+    else
+      kwriteconfig6 --notify --file plasmanotifyrc --group DoNotDisturb --key Until --delete
+    fi
+  fi
+  systemctl --user stop coucou-modo-juego-pantalla.service 2>/dev/null
+  [ -f "$RUN/baloo" ] && balooctl6 resume >/dev/null 2>&1
+  [ -s "$RUN/unidades" ] && systemctl --user start $(cat "$RUN/unidades") 2>/dev/null
+  rm -rf "$RUN"
+  anota "inactivo (disponibles: $(libre) MB)"
+  avisar "Desactivado: todo volvió a como estaba."
+}
+
+estado() {
+  local a=false o="" k v
+  activo && a=true
+  while IFS='|' read -r k _ _; do
+    v=false; [ "$(opcion "$k")" = 1 ] && v=true
+    o="$o${o:+,}\"$k\":$v"
+  done <<< "$OPCIONES"
+  local p=""
+  if activo && [ -s "$RUN/pausado" ]; then
+    while read -r k; do p="$p${p:+,}\"$k\""; done < "$RUN/pausado"
+  fi
+  # (los textos de OPCIONES no llevan comillas ni barras: van tal cual al JSON)
+  printf '{"activo":%s,"opciones":{%s},"libre":%s,"liberado":%s,"pausado":[%s],"aviso":"%s"}\n' \
+    "$a" "$o" "$(libre)" "$(cat "$RUN/liberado" 2>/dev/null || echo 0)" "$p" "$(activo && aviso)"
+}
+
+case ${1:-} in
+  estado) estado; exit 0 ;;
+  opcion)
+    printf '%s\n' "$OPCIONES" | grep -q "^${2:-x}|" && [[ ${3:-} =~ ^[01]$ ]] || { echo "uso: modo-juego opcion CLAVE 0|1" >&2; exit 2; }
+    { grep -v "^$2=" "$CONF" 2>/dev/null; echo "$2=$3"; } > "$CONF.nuevo" && mv "$CONF.nuevo" "$CONF"
+    exit 0 ;;
+  activar|desactivar|alternar) ;;
+  *) echo "uso: modo-juego activar|desactivar|alternar|estado|opcion CLAVE 0|1" >&2; exit 2 ;;
+esac
+
+# Activar y desactivar corren en un servicio propio: así no los corta cerrar el Centro de
+# control que los abrió
+if [ -z "${COUCOU_MODO_JUEGO_SOLO:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ] && command -v systemd-run >/dev/null; then
+  exec systemd-run --user --quiet --collect --unit="coucou-modo-juego-$(date +%s%N)" \
+    --setenv=COUCOU_MODO_JUEGO_SOLO=1 "$ESTE" "$1"
+fi
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/coucou-modo-juego.lock"
+flock 9
+case $1 in
+  activar) activar ;;
+  desactivar) desactivar ;;
+  alternar) if activo; then desactivar; else activar; fi ;;
+esac

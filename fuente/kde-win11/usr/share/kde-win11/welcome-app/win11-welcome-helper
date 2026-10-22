@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Tareas de administrador de "Bienvenido" (las mismas que CachyOS Hello). Se ejecuta con pkexec:
+#   pkexec win11-welcome-helper ACCIÓN [ACCIÓN...]
+# Acciones: enable:SERVICIO  disable:SERVICIO  gaming  winboat:USUARIO  psd  update  mirrors
+#           cleancache  orphans  unlock  keyrings  reinstall
+# Solo se aceptan los servicios y acciones de esta lista.
+set -uo pipefail
+export LANG=${LANG:-es_ES.UTF-8}
+
+SERVICES="ananicy-cpp.service systemd-oomd.service bluetooth.service"
+pkgs_for() { # paquete que aporta cada servicio
+  case "$1" in
+    ananicy-cpp.service) echo "ananicy-cpp cachyos-ananicy-rules" ;;
+    bluetooth.service) echo "bluez bluez-utils" ;;
+  esac
+}
+# Si otro programa está usando pacman (actualizaciones en segundo plano), se espera a que termine
+wait_lock() { for _ in $(seq 180); do [ -e /var/lib/pacman/db.lck ] || return 0; sleep 1; done; }
+install() { wait_lock; pacman -S --needed --noconfirm "$@"; }
+# Controladores de vídeo (Vulkan, 64 y 32 bits) para la tarjeta del equipo. Los paquetes de juegos
+# piden "un" vulkan-driver y lib32-vulkan-driver: sin nombrarlos, --noconfirm elige el primero de la
+# lista (mesa-git), que choca con el mesa instalado y cancela toda la instalación.
+gpu_drivers() {
+  local d=() v g
+  # Los que ya instaló chwd (o el usuario), con su versión de 32 bits
+  for v in $(pacman -Qq | grep -E '^(vulkan-(radeon|intel|nouveau|swrast|virtio|asahi|freedreno|broadcom|panfrost|powervr|gfxstream|dzn)|nvidia(-[0-9]+xx)?-utils)$'); do
+    d+=("$v" "lib32-$v")
+  done
+  if [ ${#d[@]} -eq 0 ]; then
+    g=$(lspci -nn 2>/dev/null | grep -Ei 'vga|3d|display')
+    grep -qiE '\b(amd|ati|radeon)\b' <<<"$g" && d+=(vulkan-radeon lib32-vulkan-radeon)
+    grep -qi intel <<<"$g" && d+=(vulkan-intel lib32-vulkan-intel)
+    grep -qi nvidia <<<"$g" && d+=(vulkan-nouveau lib32-vulkan-nouveau)
+    grep -qi virtio <<<"$g" && d+=(vulkan-virtio lib32-vulkan-virtio)
+    [ ${#d[@]} -gt 0 ] || d+=(vulkan-swrast lib32-vulkan-swrast)   # máquina virtual u otra
+  fi
+  # OpenGL de 32 bits del mismo mesa que esté instalado (mesa o mesa-git)
+  if pacman -Qq mesa-git >/dev/null 2>&1; then d+=(lib32-mesa-git); else d+=(lib32-mesa); fi
+  echo "${d[@]}"
+}
+step() { echo "@@ $*"; }   # línea de estado que muestra la app
+
+status=0
+for a in "$@"; do
+  case "$a" in
+    enable:*|disable:*)
+      svc=${a#*:}
+      [[ " $SERVICES " == *" $svc "* ]] || { echo "servicio no permitido: $svc"; status=1; continue; }
+      if [ "${a%%:*}" = enable ]; then
+        step "Activando ${svc%.service}"
+        p=$(pkgs_for "$svc"); [ -n "$p" ] && { install $p || status=1; }
+        systemctl enable --now "$svc" || status=1
+      else
+        step "Desactivando ${svc%.service}"
+        systemctl disable --now "$svc" || status=1
+      fi ;;
+    psd)
+      step "Instalando profile-sync-daemon"
+      install profile-sync-daemon || status=1 ;;
+    gaming)
+      step "Instalando paquetes para juegos (puede tardar bastante)"
+      # Con -Syu (no solo -S): con la lista de paquetes vieja las descargas fallan, y -Sy solo deja el
+      # sistema a medio actualizar
+      wait_lock
+      pacman -Syu --needed --noconfirm $(gpu_drivers) cachyos-gaming-meta cachyos-gaming-applications || status=1 ;;
+    winboat:*)
+      user=${a#*:}
+      id -u "$user" >/dev/null 2>&1 || { echo "usuario desconocido: $user"; status=1; continue; }
+      step "Instalando WinBoat y Docker"
+      install winboat docker docker-compose || { status=1; continue; }
+      systemctl enable --now docker.socket || status=1
+      usermod -aG docker "$user" || status=1 ;;
+    update)
+      step "Actualizando el sistema"
+      pacman -Syu --noconfirm || status=1 ;;
+    mirrors)
+      step "Buscando los servidores más rápidos"
+      cachyos-rate-mirrors || status=1 ;;
+    cleancache)
+      step "Limpiando la caché de paquetes"
+      pacman -Sc --noconfirm || status=1 ;;
+    orphans)
+      step "Quitando paquetes huérfanos"
+      o=$(pacman -Qtdq)
+      if [ -z "$o" ]; then echo "No hay paquetes huérfanos."; else pacman -Rns --noconfirm $o || status=1; fi ;;
+    unlock)
+      step "Quitando el bloqueo de pacman"
+      if [ -e /var/lib/pacman/db.lck ]; then rm -f /var/lib/pacman/db.lck && echo "Bloqueo eliminado."
+      else echo "No había ningún bloqueo."; fi ;;
+    keyrings)
+      step "Restableciendo las claves de los repositorios"
+      rm -rf /etc/pacman.d/gnupg && pacman-key --init && pacman-key --populate archlinux cachyos \
+        && pacman -Sy --noconfirm archlinux-keyring cachyos-keyring || status=1 ;;
+    reinstall)
+      step "Reinstalando todos los paquetes"
+      pacman -S --noconfirm $(pacman -Qnq) || status=1 ;;
+    *) echo "acción desconocida: $a"; status=1 ;;
+  esac
+done
+exit $status

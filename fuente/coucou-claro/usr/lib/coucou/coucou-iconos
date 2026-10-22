@@ -1,0 +1,415 @@
+#!/usr/bin/env python3
+# Coucou: el tema de iconos que elige el usuario (Configuración › Personalización › Iconos).
+#
+#   coucou-iconos list                 los temas instalados, en JSON (familia, nombre, variantes)
+#   coucou-iconos get                  la elección guardada ("auto": los del diseño)
+#   coucou-iconos set <familia|auto>   la guarda y la aplica ya (explorador, apps, menús, GTK)
+#   coucou-iconos resolve <light|dark> qué tema corresponde al modo (lo usa coucou-colors)
+#   coucou-iconos apply                vuelve a aplicar la elección con el modo actual
+#   coucou-iconos lugares              los iconos de los lugares del explorador (Inicio, Descargas…)
+#                                      con sus nombres de siempre, para que sigan al tema elegido
+#   coucou-iconos carpetas <color>     el color de las carpetas del tema Coucou (violet, blue, green…);
+#                                      solo en tu cuenta. "violet" es el de siempre
+#   coucou-iconos restablecer          todo como vino: los iconos del diseño (Coucou), carpetas
+#                                      violetas, los lugares del explorador y sin caché vieja
+#
+# Lo que eligió la persona queda en ~/.config/coucou/iconos (el tema) y ~/.config/coucouiconosrc
+# (el color de las carpetas): la página Personalización › Iconos lo lee de ahí.
+#
+# La elección queda en ~/.config/coucou/iconos. Una "familia" junta las variantes clara y oscura
+# de un tema (Papirus / Papirus-Dark, breeze / breeze-dark, Win11 / Win11-dark): al cambiar el
+# modo claro/oscuro se usa la variante que corresponde, sin perder lo elegido.
+import configparser
+import json
+import os
+import re
+import subprocess
+import sys
+
+HOME = os.path.expanduser("~")
+CHOICE = os.path.join(os.environ.get("XDG_CONFIG_HOME", HOME + "/.config"), "coucou", "iconos")
+ROOTS = [HOME + "/.local/share/icons", HOME + "/.icons", "/usr/share/icons"]
+# No son temas para elegir: los de base, los viejos y los que solo traen cursores
+SKIP = {"hicolor", "locolor", "default", "AdwaitaLegacy", "gnome"}
+# Nombres que se entienden
+NICE = {"Coucou": "Coucou (Papirus violeta)", "Win11": "Windows 11", "breeze": "Breeze (KDE)", "Adwaita": "Adwaita (GNOME)", "Papirus": "Papirus",
+        "Qogir": "Qogir", "Pop": "Pop!_OS", "elementary": "elementary OS", "Cosmic": "COSMIC", "char-white": "Suru (char)"}
+DARK = re.compile(r"[-_ ]?(dark|Dark|DARK|night|Night)$")
+LIGHT = re.compile(r"[-_ ]?(light|Light|LIGHT)$")
+
+
+def themes():
+    """{carpeta: nombre visible} de los temas de iconos instalados (no los de cursores)."""
+    out = {}
+    for root in ROOTS:
+        if not os.path.isdir(root):
+            continue
+        for d in sorted(os.listdir(root)):
+            idx = os.path.join(root, d, "index.theme")
+            if d in SKIP or d in out or not os.path.isfile(idx):
+                continue
+            c = configparser.ConfigParser(interpolation=None, strict=False)
+            try:
+                c.read(idx, encoding="utf-8")
+            except Exception:
+                continue
+            if not c.has_section("Icon Theme"):
+                continue
+            s = c["Icon Theme"]
+            dirs = [x.strip() for x in (s.get("Directories", "") + "," + s.get("ScaledDirectories", "")).split(",") if x.strip()]
+            if not dirs or s.get("Hidden", "false").lower() == "true":
+                continue
+            # Un tema de iconos de verdad: tiene carpetas (los de cursores no). Los que heredan
+            # todo menos unos pocos (variantes oscuras) cuentan si heredan de uno que las tiene.
+            base = os.path.join(root, d)
+            has_folder = any(os.path.isfile(os.path.join(base, x, "folder" + e)) for x in dirs for e in (".svg", ".png"))
+            if not has_folder and not s.get("Inherits", "").strip():
+                continue
+            if not has_folder and not any(x.split("/")[-1] in ("places",) or "places" in x for x in dirs):
+                continue
+            out[d] = s.get("Name", d)
+    return out
+
+
+def base_of(name):
+    return LIGHT.sub("", DARK.sub("", name))
+
+
+def families():
+    t = themes()
+    fam = {}
+    for d in t:
+        fam.setdefault(base_of(d), []).append(d)
+    out = []
+    for base, members in sorted(fam.items(), key=lambda x: x[0].lower()):
+        light = base if base in members else next((m for m in members if LIGHT.search(m)), None)
+        dark = next((m for m in members if DARK.search(m)), None)
+        light = light or dark or members[0]
+        dark = dark or light
+        name = re.sub(r"\s*[-(]?\s*(dark|Dark|oscuro)\)?\s*$", "", t.get(light, base)).strip() or base
+        out.append({"id": base, "name": NICE.get(base, name), "light": light, "dark": dark})
+    return out
+
+
+def choice():
+    try:
+        v = open(CHOICE).read().strip()
+        return v or "auto"
+    except OSError:
+        return "auto"
+
+
+def mode():
+    """El modo actual de Coucou (light/dark), del esquema de colores de KDE."""
+    try:
+        out = subprocess.run(["kreadconfig6", "--file", "kdeglobals", "--group", "General", "--key", "ColorScheme"],
+                             capture_output=True, text=True, timeout=3).stdout.strip()
+    except Exception:
+        out = ""
+    if "Light" in out or "light" in out:
+        return "light"
+    if out in ("BreezeClassic", "BreezeLight"):
+        return "light"
+    return "dark" if out else "light"
+
+
+def resolve(m, design_default=None):
+    c = choice()
+    if c != "auto":
+        for f in families():
+            if f["id"] == c:
+                return f["dark"] if m == "dark" else f["light"]
+    if design_default:
+        return design_default
+    # Automático: los del diseño elegido (CachyOS: breeze-dark; Coucou: Papirus con carpetas
+    # violetas, los arma iconos-coucou; si no están, los de antes: Win11)
+    try:
+        style = open(os.path.join(os.path.dirname(CHOICE), "taskbar-style")).read().strip()
+    except OSError:
+        style = ""
+    if style == "cachyos":
+        return "breeze-dark" if m == "dark" else "breeze"
+    coucou = "Coucou-Dark" if m == "dark" else "Coucou"
+    if os.path.isfile(os.path.join("/usr/share/icons", coucou, "index.theme")):
+        return coucou
+    return "Win11-dark" if m == "dark" else "Win11"
+
+
+# Los lugares del explorador (panel de la izquierda de Dolphin y de "Abrir archivo"). El diseño de
+# Windows 11 (kde-win11, explorer.sh) les puso iconos propios: copias fijas en
+# ~/.local/share/icons/hicolor/…/win11-*.svg y los lugares apuntando a "win11-user-home",
+# "win11-folder-download"… Como hicolor es el respaldo de todos los temas, esos iconos no
+# cambiaban nunca al elegir otros. Aquí vuelven a los nombres de siempre, que todos los temas
+# tienen. Solo se tocan los que tienen un icono "win11-": uno puesto a mano no se toca.
+PLACES = HOME + "/.local/share/user-places.xbel"
+NOMBRE_LUGAR = {"computer": "computer", "network": "network-workgroup", "root": "drive-harddisk-root"}
+
+
+def fix_places():
+    import xml.etree.ElementTree as ET
+    ns = "http://www.freedesktop.org/standards/desktop-bookmarks"
+    cambios = 0
+    if os.path.isfile(PLACES):
+        try:
+            ET.register_namespace("bookmark", ns)
+            tree = ET.parse(PLACES)
+            for ic in tree.getroot().iter("{%s}icon" % ns):
+                n = ic.get("name", "")
+                if n.startswith("win11-"):
+                    base = n[len("win11-"):]
+                    ic.set("name", NOMBRE_LUGAR.get(base, base))
+                    cambios += 1
+            if cambios:
+                tmp = PLACES + ".coucou"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    f.write('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xbel>\n'
+                            + ET.tostring(tree.getroot(), encoding="unicode") + "\n")
+                os.replace(tmp, PLACES)   # Dolphin y los diálogos lo leen solos al cambiar
+        except (ET.ParseError, OSError) as e:
+            print(f"lugares: no se pudo leer {PLACES}: {e}", file=sys.stderr)
+    # Las copias fijas de Windows 11: sin ellas cada tema pone sus propios iconos
+    for root, _, files in os.walk(HOME + "/.local/share/icons/hicolor"):
+        if not root.endswith("/places"):
+            continue
+        for f in files:
+            if f.startswith("win11-"):
+                try:
+                    os.remove(os.path.join(root, f))
+                except OSError:
+                    pass
+    return cambios
+
+
+# El color de las carpetas del tema Coucou. El del sistema (/usr/share/icons/Coucou*, lo arma
+# iconos-coucou) es violeta; otro color se arma en la cuenta (~/.local/share/icons/Coucou*), que
+# tiene prioridad sobre el del sistema y no le cambia nada a las otras cuentas.
+PAP = "/usr/share/icons/Papirus"
+ESTADO = os.path.join(os.environ.get("XDG_CONFIG_HOME", HOME + "/.config"), "coucouiconosrc")
+USER_ICONS = HOME + "/.local/share/icons"
+MARCA = ".coucou-carpetas"
+
+
+def folder_color():
+    try:
+        v = subprocess.run(["kreadconfig6", "--file", ESTADO, "--group", "Iconos", "--key", "Carpetas"],
+                           capture_output=True, text=True, timeout=3).stdout.strip()
+    except Exception:
+        v = ""
+    return v or "violet"
+
+
+def has_color(c):
+    return bool(re.fullmatch(r"[a-z]+", c)) and os.path.isfile(f"{PAP}/48x48/places/folder-{c}.svg")
+
+
+def build_user_coucou(color):
+    """Arma (o quita, si es violeta) los temas Coucou y Coucou-Dark de la cuenta con ese color."""
+    import shutil
+    for name in ("Coucou", "Coucou-Dark"):
+        dest = os.path.join(USER_ICONS, name)
+        # Solo se toca lo que armó esto (la marca): nunca un tema propio con el mismo nombre
+        if os.path.isdir(dest) and not os.path.isfile(os.path.join(dest, MARCA)):
+            continue
+        shutil.rmtree(dest, ignore_errors=True)
+        src = os.path.join("/usr/share/icons", name, "index.theme")
+        if color == "violet" or not os.path.isfile(src) or not os.path.isdir(PAP):
+            continue
+        n = 0
+        for tam in sorted(os.listdir(PAP)):
+            places = os.path.join(PAP, tam, "places")
+            if not os.path.isdir(places) or os.path.islink(os.path.join(PAP, tam)):
+                continue
+            out = os.path.join(dest, tam, "places")
+            os.makedirs(out, exist_ok=True)
+            for f in os.listdir(places):
+                p = os.path.join(places, f)
+                if not os.path.islink(p) or "-blue" in f:
+                    continue
+                azul = os.readlink(p)
+                if "-blue" not in azul:
+                    continue
+                otro = azul.replace("-blue", "-" + color, 1)
+                if not os.path.exists(os.path.join(places, otro)):
+                    continue
+                for nombre in (f, "win11-" + f):
+                    os.symlink(os.path.join(places, otro), os.path.join(out, nombre))
+                n += 1
+            carpeta = os.path.join(out, "folder.svg")
+            if os.path.islink(carpeta):
+                os.symlink(os.readlink(carpeta), os.path.join(out, "inode-directory.svg"))
+        shutil.copy(src, os.path.join(dest, "index.theme"))
+        open(os.path.join(dest, MARCA), "w").write(color + "\n")
+        # Los de tamaño doble (@2x) son enlaces en Papirus: los mismos
+        for tam in os.listdir(PAP):
+            real = os.path.join(PAP, tam)
+            if os.path.islink(real) and not os.path.exists(os.path.join(dest, tam)):
+                os.symlink(os.readlink(real), os.path.join(dest, tam))
+
+
+def set_folder_color(color):
+    if not has_color(color):
+        print(f"no hay carpetas de ese color: {color}", file=sys.stderr)
+        sys.exit(1)
+    subprocess.run(["kwriteconfig6", "--file", ESTADO, "--group", "Iconos", "--key", "Carpetas", color])
+    build_user_coucou(color)
+    drop_cache()
+    apply_theme(resolve(mode()))
+
+
+def drop_cache():
+    """La caché de iconos de KDE: sin ella no quedan iconos viejos tras cambiar algo."""
+    for f in (HOME + "/.cache/icon-cache.kcache",):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+
+
+def reset():
+    """Todo como vino: tema automático (Coucou), carpetas violetas, lugares del explorador."""
+    try:
+        os.remove(CHOICE)
+    except OSError:
+        pass
+    subprocess.run(["kwriteconfig6", "--file", ESTADO, "--group", "Iconos", "--key", "Carpetas", "--delete"])
+    build_user_coucou("violet")
+    drop_cache()
+    apply_theme(resolve(mode()))
+
+
+def apply_theme(name):
+    fix_places()
+    subprocess.run(["kwriteconfig6", "--file", "kdeglobals", "--group", "Icons", "--key", "Theme", name])
+    # Avisa a todas las apps de KDE (Dolphin, Plasma, Configuración…) para que cambien ya,
+    # y kde-gtk-config lo lleva a GTK
+    subprocess.run(["/usr/lib/plasma-changeicons", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for f in (HOME + "/.config/gtk-3.0/settings.ini", HOME + "/.config/gtk-4.0/settings.ini"):
+        if os.path.isfile(f):
+            s = open(f).read()
+            if "gtk-icon-theme-name=" in s:
+                s = re.sub(r"gtk-icon-theme-name=.*", "gtk-icon-theme-name=" + name, s)
+                open(f, "w").write(s)
+    subprocess.run(["gsettings", "set", "org.gnome.desktop.interface", "icon-theme", name],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # La barra de Coucou (si está abierta) vuelve a buscar los iconos de sus apps
+    if subprocess.run(["pgrep", "-u", str(os.getuid()), "-x", "coucou"], stdout=subprocess.DEVNULL).returncode == 0:
+        subprocess.Popen(["coucou-launch", "--refresh-icons"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def explorer_pids():
+    out = subprocess.run(["pgrep", "-u", str(os.getuid()), "-x", "dolphin"], capture_output=True, text=True).stdout
+    return [int(x) for x in out.split()]
+
+
+def open_folders(pid):
+    """Las carpetas que muestra una ventana de Dolphin (pestañas incluidas): se le pregunta por
+    las de la carpeta personal (hasta 3 niveles), los lugares y los discos."""
+    import urllib.parse
+    cands = [HOME, "/"]
+    for top, dirs, _ in os.walk(HOME):
+        depth = top[len(HOME):].count("/")
+        dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d not in ("node_modules", "target", "__pycache__"))
+        if depth >= 3:
+            dirs[:] = []
+        cands += [os.path.join(top, d) for d in dirs]
+        if len(cands) > 4000:
+            break
+    for m in ("/run/media/" + os.environ.get("USER", ""), "/mnt", "/media"):
+        if os.path.isdir(m):
+            cands += [os.path.join(m, d) for d in os.listdir(m)]
+    found = []
+    svc = f"org.kde.dolphin-{pid}"
+    for c in cands:
+        url = "file://" + urllib.parse.quote(c)
+        r = subprocess.run(["qdbus6", svc, "/dolphin/Dolphin_1", "org.kde.dolphin.MainWindow.isUrlOpen", url],
+                           capture_output=True, text=True, timeout=5).stdout.strip()
+        if r == "true":
+            found.append(c)
+            if len(found) >= 8:
+                break
+    return found
+
+
+def reopen_explorer():
+    """Las ventanas del explorador ya abiertas no cambian de iconos solas: cada una se cierra
+    bien y se vuelve a abrir en las mismas carpetas, de a una."""
+    import time
+    for pid in explorer_pids():
+        try:
+            argv = [a.decode() for a in open(f"/proc/{pid}/cmdline", "rb").read().split(b"\0") if a]
+        except OSError:
+            continue
+        # El programa y sus opciones (-stylesheet …), sin las carpetas de cuando se abrió
+        keep, i = [argv[0]], 1
+        while i < len(argv):
+            if argv[i] in ("-stylesheet", "-style") and i + 1 < len(argv):
+                keep += argv[i:i + 2]; i += 2; continue
+            i += 1
+        folders = open_folders(pid)
+        subprocess.run(["qdbus6", f"org.kde.dolphin-{pid}", "/dolphin/Dolphin_1", "org.kde.dolphin.MainWindow.quit"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        for _ in range(50):
+            if not os.path.exists(f"/proc/{pid}"):
+                break
+            time.sleep(0.1)
+        if os.path.exists(f"/proc/{pid}"):
+            continue    # no se cerró (¿preguntando algo?): queda como está
+        subprocess.Popen(keep + (folders or [HOME]), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        time.sleep(1.5)
+
+
+def main():
+    a = sys.argv[1:] or ["list"]
+    if a[0] == "list":
+        print(json.dumps({"choice": choice(), "families": families()}, ensure_ascii=False))
+    elif a[0] == "get":
+        print(choice())
+    elif a[0] == "resolve":
+        print(resolve(a[1] if len(a) > 1 else mode()))
+    elif a[0] == "set" and len(a) > 1:
+        v = a[1]
+        if v != "auto" and v not in {f["id"] for f in families()}:
+            print(f"no está instalado: {v}", file=sys.stderr)
+            sys.exit(1)
+        os.makedirs(os.path.dirname(CHOICE), exist_ok=True)
+        if v == "auto":
+            try:
+                os.remove(CHOICE)
+            except OSError:
+                pass
+        else:
+            open(CHOICE, "w").write(v + "\n")
+        apply_theme(resolve(mode()))
+    elif a[0] == "adopt":
+        # Lo eligió en la página de KDE (Más opciones de iconos): queda como su elección
+        cur = subprocess.run(["kreadconfig6", "--file", "kdeglobals", "--group", "Icons", "--key", "Theme"],
+                             capture_output=True, text=True).stdout.strip()
+        fam = next((f for f in families() if cur in (f["light"], f["dark"])), None)
+        if fam and resolve(mode()) != cur:
+            os.makedirs(os.path.dirname(CHOICE), exist_ok=True)
+            open(CHOICE, "w").write(fam["id"] + "\n")
+    elif a[0] == "explorer-open":
+        print("yes" if explorer_pids() else "no")
+    elif a[0] == "reopen-explorer":
+        reopen_explorer()
+    elif a[0] == "apply":
+        apply_theme(resolve(mode()))
+    elif a[0] == "carpetas" and len(a) > 1:
+        set_folder_color(a[1])
+    elif a[0] == "restablecer":
+        reset()
+    elif a[0] == "lugares":
+        # (al entrar a la sesión) un color de carpetas propio se rearma: Papirus pudo cambiar
+        if folder_color() != "violet":
+            build_user_coucou(folder_color())
+        n = fix_places()
+        if n:
+            print(f"lugares del explorador: {n} iconos con su nombre de siempre")
+    else:
+        print("uso: coucou-iconos list|get|set <familia|auto>|resolve <light|dark>|apply|lugares|carpetas <color>|restablecer", file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

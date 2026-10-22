@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# Coucou: la estética completa que va con cada barra (Configuración › Personalización › Barra de
+# tareas y el instalador). Antes solo se cambiaba el panel; ahora cada barra trae lo suyo:
+#   coucou   la barra de Coucou con todo su diseño: base de Windows 11 (iconos, cursores, fuentes,
+#            Explorador) + colores, vidrio y pantalla de bloqueo de Coucou
+#   windows  la barra de Windows 11 con su estética: tema, iconos, cursores, fuentes y Explorador
+#   cachyos  la barra de CachyOS tal como viene: Breeze Oscuro, iconos breeze-dark, cursor
+#            capitaine, fuentes y Dolphin de fábrica, Preferencias del sistema de KDE
+#
+#   estilo coucou|windows|cachyos [claro|oscuro] [--sin-barra|--solo-barra] [--con-coucou]
+#     sin modo: el que se está usando (CachyOS de fábrica es oscuro)
+#     --sin-barra: solo la estética (la barra la pone después quien llama, p. ej. el instalador)
+#     --solo-barra: solo la barra (lo que hace el instalador al final, ya en la sesión)
+#     --con-coucou: con windows, deja la barra de Coucou arriba ("Los dos" del instalador)
+# Con la barra de Windows o de CachyOS, Coucou arma ese panel y se cierra (y no arranca solo al
+# entrar): queda Windows o CachyOS sin nada de Coucou en pantalla. Con la de Coucou, vuelve a arrancar.
+# Corre como el usuario, dentro de su sesión. Lo que hace queda en ~/.cache/coucou-estilo.log.
+set -uo pipefail
+ESTILO=${1:-}; shift || true
+MODO=""; BARRA=1; ASPECTO=1; CON_COUCOU=0
+for a in "$@"; do
+  case "$a" in
+    claro|light) MODO=light ;; oscuro|dark) MODO=dark ;;
+    --sin-barra) BARRA=0 ;; --solo-barra) ASPECTO=0 ;; --con-coucou) CON_COUCOU=1 ;;
+  esac
+done
+case "$ESTILO" in coucou|windows|cachyos) ;; *) echo "uso: estilo coucou|windows|cachyos [claro|oscuro] [--sin-barra]" >&2; exit 2 ;; esac
+
+cd "$HOME" 2>/dev/null || cd /
+K=/usr/share/kde-win11
+CFG=${XDG_CONFIG_HOME:-$HOME/.config}
+ESTADO="$CFG/coucou/estilo"            # el estilo aplicado (para saber qué deshacer)
+GUARDADO=~/.local/share/coucou/estilo-windows   # lo de Windows que se aparta con CachyOS
+mkdir -p ~/.cache "$CFG/coucou"
+# (el instalador lo quiere en su propio registro: COUCOU_ESTILO_SALIDA=1)
+[ -n "${COUCOU_ESTILO_SALIDA:-}" ] || exec >>~/.cache/coucou-estilo.log 2>&1
+echo "== $(date '+%F %T') estilo=$ESTILO modo=${MODO:-actual}"
+kw() { kwriteconfig6 "$@"; }
+# Corre un paso y deja en el registro si anduvo (así se ve qué falló de la estética)
+FALLOS=0
+paso_estilo() { local d=$1 rc; shift; "$@"; rc=$?; if [ $rc = 0 ]; then echo "   ok: $d"; else echo "   !! falló: $d ($rc)"; FALLOS=$((FALLOS + 1)); fi; }
+kr() { kreadconfig6 "$@"; }
+# Sin pantalla (instalación desde una terminal sin escritorio) las herramientas de Plasma se cierran
+# con un error de Qt: andan igual sin dibujar nada, y lo elegido se guarda para el próximo inicio
+[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] || export QT_QPA_PLATFORM=offscreen
+antes=$(cat "$ESTADO" 2>/dev/null)
+# Sin registro (Coucou instalado antes de esta versión): se deduce del tema global en uso
+if [ -z "$antes" ]; then
+  case "$(kr --file kdeglobals --group KDE --key LookAndFeelPackage)" in
+    org.coucou.code) antes=coucou ;;
+    org.kde.breeze*|CachyOS*) antes=cachyos ;;
+    *) antes=windows ;;
+  esac
+fi
+[ -n "$MODO" ] || MODO=$(kr --file win11rc --group Appearance --key mode --default "")
+[ -n "$MODO" ] || MODO=light
+# Color de énfasis: el elegido (COUCOU_ACENTO, p. ej. el instalador) o el que se está usando
+ACENTO=${COUCOU_ACENTO:-$(kr --file win11rc --group Appearance --key accent --default "")}
+
+# Lo de Windows que CachyOS de fábrica no tiene (Explorador, Configuración en lugar de
+# Preferencias del sistema, Bienvenido en lugar de Hello): se aparta y se devuelve igual
+apartar_windows() {
+  mkdir -p "$GUARDADO"
+  for f in ~/.local/bin/dolphin ~/.local/share/kxmlgui5/dolphin/dolphinui.rc \
+           ~/.local/share/applications/systemsettings.desktop ~/.local/share/applications/cachyos-hello.desktop; do
+    [ -e "$f" ] && mkdir -p "$GUARDADO$(dirname "$f")" && mv -f "$f" "$GUARDADO$f"
+  done
+  kw --file dolphinrc --group MainWindow --key State --delete
+  update-desktop-database ~/.local/share/applications 2>/dev/null
+}
+devolver_windows() {
+  [ -d "$GUARDADO" ] || return 0
+  (cd "$GUARDADO" && find . -type f -o -type l) | while read -r f; do
+    f=${f#.}; mkdir -p "$(dirname "$f")"; mv -f "$GUARDADO$f" "$f"
+  done
+  rm -rf "$GUARDADO"
+  update-desktop-database ~/.local/share/applications 2>/dev/null
+}
+
+# Base de Windows 11 (temas, iconos, cursores, fuentes, botones, Explorador, efectos). Completa si
+# antes estaba la de CachyOS o nunca se aplicó; si no, alcanza con el modo y el color.
+base_windows() {
+  devolver_windows
+  if [ "$antes" = cachyos ] || [ ! -f "$CFG/win11rc" ]; then
+    bash "$K/scripts/apply.sh" "$MODO"
+  else
+    bash "$K/scripts/theme.sh" --mode "$MODO" ${ACENTO:+--accent "$ACENTO"} --transparency on --force
+  fi
+}
+
+# Capturas (Spectacle): colores suaves y parejos para marcar, sin relleno que tape lo marcado.
+# Solo lo que la cuenta todavía no eligió (lo que se cambie en Spectacle se respeta)
+spectacle_suave() {
+  local C=255,77,109,255 k v
+  while read -r k v; do
+    [ -n "$(kr --file spectaclerc --group Annotations --key "$k")" ] || kw --file spectaclerc --group Annotations --key "$k" "$v"
+  done <<EOT
+rectangleStrokeColor $C
+rectangleFillColor 255,77,109,0
+rectangleStrokeWidth 4
+ellipseStrokeColor $C
+ellipseFillColor 255,77,109,0
+ellipseStrokeWidth 4
+lineStrokeColor $C
+lineStrokeWidth 4
+arrowStrokeColor $C
+arrowStrokeWidth 4
+freehandStrokeColor $C
+freehandStrokeWidth 4
+highlighterStrokeColor 255,217,61,110
+highlighterStrokeWidth 18
+textFontColor $C
+numberFillColor $C
+numberFontColor 255,255,255,255
+EOT
+}
+spectacle_suave
+
+# Portapapeles: el de Plasma (Klipper) vive en la bandeja de su panel; con la barra de Coucou
+# no hay panel, y el historial lo lleva CopyQ (su icono aparece en "Segundo plano")
+COPYQ=~/.config/autostart/coucou-copyq.desktop
+if [ "$ESTILO" = coucou ] && command -v copyq >/dev/null; then
+  mkdir -p ~/.config/autostart
+  printf '[Desktop Entry]\nType=Application\nName=CopyQ\nExec=copyq\nIcon=copyq\nNoDisplay=true\nX-KDE-autostart-phase=2\n' > "$COPYQ"
+  [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && ! pgrep -u "$(id -u)" -x copyq >/dev/null && (setsid -f copyq >/dev/null 2>&1 </dev/null)
+else
+  rm -f "$COPYQ"
+  pgrep -u "$(id -u)" -x copyq >/dev/null && copyq exit >/dev/null 2>&1
+fi
+
+# Avisos: con Coucou los muestra su barra (y retiene los de Plasma, también los críticos);
+# con las otras barras Plasma vuelve a mostrar los críticos aunque esté en "no molestar"
+if [ "$ESTILO" = coucou ]; then
+  kw --file plasmanotifyrc --group Notifications --key CriticalInDndMode --type bool --notify false
+else
+  kw --file plasmanotifyrc --group Notifications --key CriticalInDndMode --notify --delete
+fi
+
+[ $ASPECTO = 1 ] && case "$ESTILO" in
+  coucou)
+    paso_estilo "base de Windows 11" base_windows
+    paso_estilo "tema global de Coucou" plasma-apply-lookandfeel -a org.coucou.code
+    paso_estilo "colores y vidrio de Coucou" /usr/lib/coucou/coucou-colors apply --mode "$MODO" --accent "${COUCOU_ACENTO:-#6574F6}" --transparency on
+    kw --file kdeglobals --group KDE --key LookAndFeelPackage org.coucou.code   # sin sesión: al entrar
+    paso_estilo "pantalla de bloqueo de Coucou" /usr/lib/coucou/lockscreen-sync on
+    ;;
+  windows)
+    [ "$antes" = coucou ] && { /usr/lib/coucou/coucou-colors off; /usr/lib/coucou/lockscreen-sync off; }
+    paso_estilo "base de Windows 11" base_windows
+    paso_estilo "tema global de Windows 11" plasma-apply-lookandfeel -a org.kde.win11.desktop
+    kw --file kdeglobals --group KDE --key LookAndFeelPackage org.kde.win11.desktop
+    ;;
+  cachyos)
+    [ "$antes" = coucou ] && /usr/lib/coucou/coucou-colors off
+    /usr/lib/coucou/lockscreen-sync off
+    # Lo mismo que trae CachyOS en /etc/skel (cachyos-kde-settings): Breeze Oscuro, iconos
+    # breeze-dark, estilo y ventanas Breeze, cursor capitaine. En modo claro, el Breeze claro.
+    if [ "$MODO" = dark ]; then laf=org.kde.breezedark.desktop; esq=BreezeDark; ico=breeze-dark
+    else laf=org.kde.breeze.desktop; esq=BreezeLight; ico=breeze; fi
+    plasma-apply-lookandfeel -a "$laf"
+    plasma-apply-colorscheme "$esq"
+    # Lo mismo escrito en los archivos (sin sesión gráfica los plasma-apply no pueden: Plasma lo toma al entrar)
+    kw --file kdeglobals --group KDE --key LookAndFeelPackage "$laf"
+    kw --file kdeglobals --group General --key ColorScheme "$esq"
+    kw --file kdeglobals --group Icons --key Theme "$ico"
+    kw --file kcminputrc --group Mouse --key cursorTheme capitaine-cursors
+    kw --file plasmarc --group Theme --key name default
+    /usr/lib/plasma-changeicons "$ico" 2>/dev/null || kw --file kdeglobals --group Icons --key Theme "$ico"
+    plasma-apply-cursortheme capitaine-cursors
+    plasma-apply-desktoptheme default
+    kw --file kdeglobals --group KDE --key widgetStyle Breeze
+    kw --file kwinrc --group org.kde.kdecoration2 --key library org.kde.breeze
+    kw --file kwinrc --group org.kde.kdecoration2 --key theme Breeze
+    for k in ButtonsOnLeft ButtonsOnRight BorderSize BorderSizeAuto; do kw --file kwinrc --group org.kde.kdecoration2 --key $k --delete; done
+    # Fuentes de fábrica (Noto Sans): se quitan las de Windows
+    for k in font menuFont toolBarFont smallestReadableFont fixed; do kw --file kdeglobals --group General --key $k --delete; done
+    kw --file kdeglobals --group WM --key activeFont --delete
+    qdbus6 org.kde.kded6 /modules/gtkconfig org.kde.GtkConfig.setGtkTheme Breeze >/dev/null 2>&1
+    apartar_windows
+    qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1
+    ;;
+esac
+[ $ASPECTO = 1 ] && echo "$ESTILO" > "$ESTADO"
+
+# La barra. El panel de Plasma lo arma Coucou (guarda el que quita y lo devuelve igual).
+barra() {
+  local auto="$CFG/autostart/coucou.desktop" tb="$CFG/coucou/taskbar-style" i
+  if [ "$ESTILO" = coucou ] || [ $CON_COUCOU = 1 ]; then
+    rm -f "$auto"                                   # arranca en cada inicio de sesión
+    pgrep -u "$(id -u)" -x coucou >/dev/null && timeout 15 /usr/bin/coucou-launch --taskbar "$ESTILO" ||
+      setsid -f /usr/bin/coucou-launch --taskbar "$ESTILO" >/dev/null 2>&1 < /dev/null
+    return 0
+  fi
+  # Windows o CachyOS solos: Coucou cambia el panel, espera a que quede y se cierra
+  rm -f "$tb"
+  if pgrep -u "$(id -u)" -x coucou >/dev/null; then timeout 15 /usr/bin/coucou-launch --taskbar "$ESTILO"
+  else setsid -f /usr/bin/coucou-launch --taskbar "$ESTILO" >/dev/null 2>&1 < /dev/null; fi
+  for i in $(seq 40); do [ "$(cat "$tb" 2>/dev/null)" = "$ESTILO" ] && break; sleep 0.5; done
+  [ "$(cat "$tb" 2>/dev/null)" = "$ESTILO" ] || { echo "!! el panel no confirmó el cambio"; echo "$ESTILO" > "$tb"; }
+  sleep 1
+  pkill -u "$(id -u)" -x coucou
+  mkdir -p "$CFG/autostart"
+  printf '[Desktop Entry]\nType=Application\nName=Coucou\nHidden=true\n' > "$auto"
+}
+# Los iconos que eligió el usuario en Configuración ganan a los del diseño
+[ -s "$CFG/coucou/iconos" ] && /usr/lib/coucou/coucou-iconos apply
+[ $BARRA = 1 ] && barra
+if [ $FALLOS -gt 0 ] && [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+  echo "== listo (sin escritorio abierto: lo que necesita pantalla queda escrito y se aplica al entrar)"; exit 0
+fi
+if [ $FALLOS -gt 0 ]; then echo "== listo, con $FALLOS paso(s) que fallaron"; exit 1; fi
+echo "== listo"
+exit 0

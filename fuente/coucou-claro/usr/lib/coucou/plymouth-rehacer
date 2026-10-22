@@ -1,0 +1,26 @@
+#!/bin/sh
+# Coucou: la animación de arranque (Plymouth) va dentro de la imagen de arranque (initramfs):
+# un cambio en el tema de Coucou no se ve hasta rehacerla. Solo si es el tema en uso y solo si
+# la animación cambió de verdad: rehacerla lleva unos 20 segundos y el gancho de pacman salta en
+# cada actualización de Coucou aunque la animación sea la misma.
+#   plymouth-rehacer            rehace si hace falta
+#   plymouth-rehacer --forzar   rehace igual
+command -v plymouth-set-default-theme >/dev/null || exit 0
+[ "$(plymouth-set-default-theme 2>/dev/null)" = coucou ] || exit 0
+HUELLA=/var/lib/coucou/plymouth.huella
+h=$(cat /usr/share/plymouth/themes/coucou/* /etc/plymouth/plymouthd.conf 2>/dev/null | sha256sum | cut -c1-64)
+if [ "${1:-}" != --forzar ] && [ "$(cat "$HUELLA" 2>/dev/null)" = "$h" ]; then
+    echo "animación de arranque: sin cambios"
+    exit 0
+fi
+if command -v limine-mkinitcpio >/dev/null && limine-mkinitcpio >/dev/null 2>&1; then
+    ok=1
+elif mkinitcpio -P >/dev/null 2>&1; then
+    ok=1
+else
+    echo "no se pudo rehacer la imagen de arranque: sudo mkinitcpio -P" >&2
+    exit 0
+fi
+mkdir -p "$(dirname "$HUELLA")" && echo "$h" > "$HUELLA"
+echo "animación de arranque al día"
+exit 0

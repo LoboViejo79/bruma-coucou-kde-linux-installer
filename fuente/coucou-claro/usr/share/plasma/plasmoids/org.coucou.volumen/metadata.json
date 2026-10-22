@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Coucou"
+            }
+        ],
+        "Category": "Multimedia",
+        "Description": "El volumen del sonido: arrastra el arco, clic para silenciar",
+        "Icon": "audio-volume-high",
+        "Id": "org.coucou.volumen",
+        "License": "GPL-2.0+",
+        "Name": "Coucou: Volumen",
+        "Version": "1.0",
+        "Website": "https://github.com/Louis-CFM/coucou"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

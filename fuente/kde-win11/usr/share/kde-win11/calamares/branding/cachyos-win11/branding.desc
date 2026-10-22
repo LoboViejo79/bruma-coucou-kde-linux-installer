@@ -1,0 +1,42 @@
+---
+# CachyOS con aspecto de instalación de Windows 11
+componentName:  cachyos-win11
+
+welcomeStyleCalamares:   false
+welcomeExpandingLogo:   true
+
+windowExpanding:    normal
+windowSize: 1080px,680px
+windowPlacement: center
+
+# Pasos en columna a la izquierda (como el programa de instalación de Windows)
+sidebar: qml,left
+navigation: widget
+
+strings:
+    productName:         CachyOS
+    shortProductName:    CachyOS
+    version:             2024-03-30
+    shortVersion:        2024-03-30
+    versionedName:       CachyOS
+    shortVersionedName:  CachyOS
+    bootloaderEntryName: CachyOS
+
+images:
+    productLogo:         "logo.png"
+    productIcon:         "icon.png"
+    productWelcome:      "welcome.png"
+
+style:
+   SidebarBackground:        "#eef3fa"
+   SidebarText:              "#1b1b1b"
+   SidebarTextCurrent:       "#003e92"
+   SidebarBackgroundCurrent: "#dbe7f7"
+
+slideshow:               "show.qml"
+slideshowAPI: 2
+
+uploadServer :
+    type :    "http"
+    url :     "https://paste.cachyos.org"
+    sizeLimit : -1

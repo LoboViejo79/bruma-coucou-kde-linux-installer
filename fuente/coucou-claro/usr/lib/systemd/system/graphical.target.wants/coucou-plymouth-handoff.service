@@ -1,0 +1,11 @@
+[Unit]
+Description=Coucou: cerrar Plymouth cuando aparece la sesión
+After=plymouth-quit.service display-manager.service
+ConditionPathExists=/run/plymouth/pid
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/coucou/plymouth-handoff
+
+[Install]
+WantedBy=graphical.target

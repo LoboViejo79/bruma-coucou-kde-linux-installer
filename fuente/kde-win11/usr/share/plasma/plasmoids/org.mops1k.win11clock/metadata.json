@@ -1,0 +1,28 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "mops1k"
+            }
+        ],
+        "Category": "Date and Time",
+        "Description": "Windows 11 style clock: time above the date, with a popup holding notifications, the calendar and Do Not Disturb",
+        "Description[ru]": "Часы в стиле Windows 11: время над датой, поповер с уведомлениями, календарём и режимом «Не беспокоить»",
+        "EnabledByDefault": true,
+        "FormFactors": [
+            "desktop",
+            "horizontal",
+            "vertical",
+            "planar"
+        ],
+        "Icon": "clock",
+        "Id": "org.mops1k.win11clock",
+        "License": "GPL-3.0-or-later",
+        "Name": "Win11 Clock",
+        "Name[ru]": "Часы Win11",
+        "Version": "0.1.0"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
+}

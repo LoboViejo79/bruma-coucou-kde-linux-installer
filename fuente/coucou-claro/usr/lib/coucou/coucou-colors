@@ -1,0 +1,334 @@
+#!/bin/bash
+# Coucou: colores de todo el escritorio con el tema Coucou Code.
+#   coucou-colors apply [--mode dark|light] [--accent '#RRGGBB'] [--transparency on|off]
+#       Modo, énfasis y transparencia de Coucou en UN solo cambio con fundido (sin el script
+#       de Windows 11, que repintaba todo y luego Coucou otra vez: eso era el parpadeo).
+#       Esquema "Coucou Code" (oscuro) o "Coucou Code claro", estilo Kvantum CoucouCode con
+#       los violetas/lavandas de Coucou, GTK, cursor, iconos y la barra de Coucou.
+#   coucou-colors on    -> apply con lo guardado en ~/.config/win11rc
+#   coucou-colors gtk   -> solo GTK (tema Breeze con los colores de Coucou), con el modo guardado
+#   coucou-colors off   -> vuelven el esquema y el estilo que había antes de Coucou
+set -u
+cfg=${XDG_CONFIG_HOME:-$HOME/.config}
+state=$cfg/coucou/colors-before
+kv=$cfg/Kvantum
+apps=${XDG_DATA_HOME:-$HOME/.local/share}/applications
+kr() { kreadconfig6 --file "$1" --group "$2" --key "$3" 2>/dev/null; }
+kw() { kwriteconfig6 "$@"; }
+rgb() { printf '%d,%d,%d' "0x${1:1:2}" "0x${1:3:2}" "0x${1:5:2}"; }
+
+# Texto legible sobre un color (blanco o casi negro según su luminosidad)
+text_on() {
+    python3 -I -c '
+import sys
+h=sys.argv[1].lstrip("#"); r,g,b=[int(h[i:i+2],16)/255 for i in (0,2,4)]
+l=lambda c: c/12.92 if c<=0.03928 else ((c+0.055)/1.055)**2.4
+print("#1D1B33" if 0.2126*l(r)+0.7152*l(g)+0.0722*l(b)>0.42 else "#FFFFFF")' "$1"
+}
+
+# Estilo Kvantum CoucouCode: copia del Win11OS del modo, con el énfasis y los tonos de Coucou
+kvantum() { # $1=modo $2=énfasis $3=texto sobre el énfasis
+    local mode=$1 accent=$2 atext=$3 src= t
+    for t in "Win11OS-$mode-accent" "Win11OS-$mode"; do
+        [ -f "$kv/$t/$t.kvconfig" ] && { src=$t; break; }
+    done
+    [ -n "$src" ] || return 0
+    local old tmp
+    old=$(sed -n 's/^highlight\.color=//p' "$kv/$src/$src.kvconfig" | head -1)
+    tmp=$(mktemp -d)
+    cp "$kv/$src/$src.kvconfig" "$tmp/CoucouCode.kvconfig"
+    cp "$kv/$src/$src.svg" "$tmp/CoucouCode.svg"
+    local f=("$tmp/CoucouCode.kvconfig" "$tmp/CoucouCode.svg")
+    # el énfasis: el que tenía la copia y los azules originales del tema
+    [ -n "$old" ] && sed -i "s/${old}/${accent}/Ig" "${f[@]}"
+    sed -i -E "s/#(4bc8ff|007de6|1e82ff)/${accent}/Ig" "${f[@]}"
+    if [ "$mode" = dark ]; then
+        sed -i -E \
+            -e 's/#141414/#0E0C24/Ig' -e 's/#191919/#13112F/Ig' -e 's/#1A1A1A/#141232/Ig' \
+            -e 's/#1E1E1E/#16143A/Ig' -e 's/#202020/#16143A/Ig' -e 's/#212327/#1A1840/Ig' \
+            -e 's/#262626/#1C1A44/Ig' -e 's/#26272A/#1E1B44/Ig' -e 's/#2A2A2A/#211E4A/Ig' \
+            -e 's/#2C2C2C/#231F4F/Ig' -e 's/#2D2D2D/#252154/Ig' -e 's/#313338/#29255A/Ig' \
+            -e 's/#333333/#2A2660/Ig' -e 's/#343031/#2B2760/Ig' -e 's/#36383E/#2E2A66/Ig' \
+            -e 's/#3A3A3A/#332E6A/Ig' -e 's/#424242/#3A3578/Ig' -e 's/#474747/#3E3980/Ig' \
+            -e 's/#505050/#45408A/Ig' -e 's/#5A5A5A/#4D4894/Ig' -e 's/#646464/#57529E/Ig' \
+            -e 's/#6C6E70/#615CA6/Ig' -e 's/#D9DCE3/#F2F0FF/Ig' -e 's/#586379/#6F6A9E/Ig' \
+            "${f[@]}"
+    else
+        sed -i -E \
+            -e 's/#FAFAFA/#FAF9FF/Ig' -e 's/#F9F9F9/#FAF9FF/Ig' -e 's/#F8F8F8/#F9F8FF/Ig' \
+            -e 's/#F5F5F5/#F4F2FF/Ig' -e 's/#F2F2F2/#F1EEFE/Ig' -e 's/#F0F0F0/#EEEBFC/Ig' \
+            -e 's/#EBEBEB/#E8E4FA/Ig' -e 's/#EAEAEA/#E7E3FA/Ig' -e 's/#E6E6E6/#ECE9FB/Ig' \
+            -e 's/#E1E1E1/#E2DEF7/Ig' -e 's/#DFDFDF/#DEDAF5/Ig' -e 's/#DCDEDF/#DAD6F2/Ig' \
+            -e 's/#D5D5D5/#D6D1F0/Ig' -e 's/#D3D3D3/#D3CEEE/Ig' -e 's/#C8C8C8/#C9C3E8/Ig' \
+            -e 's/#444444/#2A2650/Ig' -e 's/#343434/#302C58/Ig' -e 's/#323232/#2E2A55/Ig' \
+            "${f[@]}"
+    fi
+    sed -i -E "s/^highlight\.text\.color=.*/highlight.text.color=${atext}/; s/^link\.color=.*/link.color=${accent}/" \
+        "$tmp/CoucouCode.kvconfig"
+    # La fila seleccionada (listas, árbol de archivos) con el color de énfasis, no gris
+    sed -i -E "s/^no_selection_tint=true/no_selection_tint=false/" "$tmp/CoucouCode.kvconfig"
+    rm -rf "$kv/CoucouCode"
+    mv "$tmp" "$kv/CoucouCode"
+    chmod 755 "$kv/CoucouCode"
+    kw --file "$kv/kvantum.kvconfig" --group General --key theme CoucouCode
+}
+
+# GTK: la variante de Fluent más cercana al énfasis, clara u oscura
+# GTK (el diálogo de "subir archivo" de la barra y de muchas apps, Firefox, etc.): el tema Breeze,
+# que toma los colores de Coucou que KDE escribe en ~/.config/gtk-{3,4}.0/colors.css cada vez que
+# cambia el esquema (claro u oscuro, con el énfasis). Antes era Fluent (el de Windows 11): gris y
+# azul fijos, no seguía a Coucou y en oscuro desentonaba con el resto.
+gtk() { # $1=modo $2=énfasis (el énfasis ya va en colors.css)
+    local g=Breeze dark x d
+    dark=$([ "$1" = dark ] && echo true || echo false)
+    [ -d /usr/share/themes/Breeze ] || [ -d "$HOME/.themes/Breeze" ] || return 0
+    # GTK 4: fuera los enlaces al tema viejo; KDE escribe colors.css y el gtk.css de abajo lo usa
+    for x in gtk.css gtk-dark.css assets; do
+        [ -L "$cfg/gtk-4.0/$x" ] && rm -f "$cfg/gtk-4.0/$x"
+    done
+    qdbus6 org.kde.kded6 /modules/gtkconfig org.kde.GtkConfig.setGtkTheme "$g" >/dev/null 2>&1 || true
+    for d in gtk-3.0 gtk-4.0; do
+        mkdir -p "$cfg/$d"
+        kw --file "$cfg/$d/settings.ini" --group Settings --key gtk-theme-name "$g"
+        kw --file "$cfg/$d/settings.ini" --group Settings --key gtk-application-prefer-dark-theme "$dark"
+        [ -s "$cfg/$d/gtk.css" ] || printf "@import 'colors.css';\n" > "$cfg/$d/gtk.css"
+    done
+    gsettings set org.gnome.desktop.interface color-scheme "$([ "$1" = dark ] && echo prefer-dark || echo default)" 2>/dev/null || true
+    gsettings set org.gnome.desktop.interface gtk-theme "$g" 2>/dev/null || true
+}
+
+# Lo que cambia con el modo y no con el color: cursor e iconos. Los bordes de las
+# ventanas no: son los de Breeze, que toman solos los colores del esquema (cambiar
+# de tema de bordes obliga a recargar KWin, y eso deja la pantalla en negro).
+mode_parts() { # $1=modo
+    local m=$1 icons
+    plasma-apply-cursortheme "$([ "$m" = dark ] && echo Fluent-dark-cursors || echo Fluent-cursors)" >/dev/null 2>&1 &
+    # Los iconos que eligió el usuario (Configuración › Personalización › Iconos), en la
+    # variante del modo; si no eligió, los de Windows 11
+    icons=$(/usr/lib/coucou/coucou-iconos resolve "$m" 2>/dev/null)
+    [ -n "$icons" ] || icons=$([ "$m" = dark ] && echo Win11-dark || echo Win11)
+    kw --file kdeglobals --group Icons --key Theme "$icons"
+    /usr/lib/plasma-changeicons "$icons" >/dev/null 2>&1 &
+    # Los lugares del explorador (Inicio, Descargas…) con los iconos del tema, no los fijos de Windows 11
+    /usr/lib/coucou/coucou-iconos lugares >/dev/null 2>&1 &
+    wait
+}
+
+# Bordes de ventana Breeze (siguen los colores de Coucou en claro y oscuro). Devuelve 0 si cambió.
+decoration() {
+    local lib theme
+    lib=$(kr kwinrc org.kde.kdecoration2 library); theme=$(kr kwinrc org.kde.kdecoration2 theme)
+    [ "$lib" = org.kde.breeze ] && [ "$theme" = Breeze ] && return 1
+    grep -q '^decoration=' "$state" 2>/dev/null || printf 'decoration=%s|%s\n' "$lib" "$theme" >> "$state"
+    kw --file kwinrc --group org.kde.kdecoration2 --key library org.kde.breeze
+    kw --file kwinrc --group org.kde.kdecoration2 --key theme Breeze
+    return 0
+}
+
+# Tema de Plasma (paneles de la barra de Windows/CachyOS, notificaciones, menús de Plasma):
+# copia del Win11OS del modo SIN su archivo de colores, así toma los de Coucou (violeta en
+# oscuro, lavanda en claro). Se alternan dos nombres para que Plasma recargue una sola vez.
+desktop_theme() { # $1=modo $2=transparencia (on/off)
+    local m=$1 tr=${2:-on} dt=${XDG_DATA_HOME:-$HOME/.local/share}/plasma/desktoptheme src= name cur
+    for d in "$dt/Win11OS-$m" "/usr/share/plasma/desktoptheme/Win11OS-$m"; do
+        [ -f "$d/metadata.desktop" ] || [ -f "$d/metadata.json" ] && { src=$d; break; }
+    done
+    [ -n "$src" ] || return 0
+    cur=$(kr plasmarc Theme name)
+    grep -q '^desk=' "$state" 2>/dev/null || { [ "${cur#Coucou-}" = "$cur" ] && printf 'desk=%s\n' "$cur" >> "$state"; }
+    name="Coucou-$m"
+    [ "$cur" = "$name" ] && name="Coucou-$m-b"
+    rm -rf "${dt:?}/$name"
+    mkdir -p "$dt"
+    cp -a "$src" "$dt/$name"
+    rm -f "$dt/$name/colors"
+    # Sin transparencia: Plasma usa los fondos opacos del tema (sin la carpeta translucent)
+    if [ "$tr" = off ]; then rm -rf "${dt:?}/$name/translucent"; : > "$dt/$name/.coucou-solid"; fi
+    sed -i -E "s/^(Name|X-KDE-PluginInfo-Name)=.*/\1=$name/" "$dt/$name/metadata.desktop" 2>/dev/null
+    # Fondo por defecto (una pantalla que se conecta): el de Coucou, no el de Windows 11 de la copia
+    [ -x /usr/lib/coucou/fondos-pantallas ] && /usr/lib/coucou/fondos-pantallas --solo-tema
+    for old in "$dt"/Coucou-*; do
+        case "$(basename "$old")" in "$name"|"$cur") ;; *) rm -rf "$old" ;; esac
+    done
+    plasma-apply-desktoptheme "$name" >/dev/null 2>&1 || true
+}
+
+# El explorador (Dolphin) se abre con una hoja de estilo propia (~/.config/win11/dolphin.qss, la
+# carga ~/.local/bin/dolphin). La de Windows 11 trae sus grises: con Coucou, la de Coucou.
+dolphin_qss() { # $1=modo $2=énfasis
+    local VIEW PANE LINE FIELD FIELD_H FIELD_B FIELD_T FIELD_TXT TXT A=$2
+    if [ "$1" = dark ]; then
+        VIEW='#13112F'; PANE='#16143A'; LINE='#2E2A66'; FIELD='#1E1B44'; FIELD_H='#272357'
+        FIELD_B='#2E2A66'; FIELD_T='#B9B5E0'; FIELD_TXT='#FFFFFF'; TXT='#FFFFFF'
+    else
+        VIEW='#FFFFFF'; PANE='#F4F2FF'; LINE='#E2DDF8'; FIELD='#FFFFFF'; FIELD_H='#F4F2FF'
+        FIELD_B='#DCD6F7'; FIELD_T='#5F5A8A'; FIELD_TXT='#1D1B33'; TXT='#1D1B33'
+    fi
+    mkdir -p "$cfg/win11"
+    cat > "$cfg/win11/dolphin.qss" <<QSS
+DolphinMainWindow, KItemListContainer { background-color: $VIEW; }
+KFilePlacesView { background-color: $PANE; color: $TXT; border: none; border-right: 1px solid $LINE; }
+QToolBar#mainToolBar, QToolBar#commandBar { border: none; border-bottom: 1px solid $LINE; }
+DolphinUrlNavigator { background-color: $FIELD; border: 1px solid $FIELD_B; border-radius: 10px; margin: 2px 6px; }
+DolphinUrlNavigator:focus-within { border: 1px solid $A; }
+DolphinUrlNavigator KUrlComboBox, DolphinUrlNavigator KUrlComboBox QLineEdit { background: transparent; border: none; color: $FIELD_TXT; }
+QLineEdit#win11SearchField { padding: 4px 10px; margin: 2px 6px; color: $FIELD_TXT; background-color: $FIELD;
+  border: 1px solid $FIELD_B; border-radius: 10px; }
+QLineEdit#win11SearchField:hover { background-color: $FIELD_H; }
+QLineEdit#win11SearchField:focus { background-color: $VIEW; border: 1px solid $A; }
+QToolButton[text="Buscar"] { min-width: 230px; padding: 4px 12px; margin: 2px 4px; text-align: left; color: $FIELD_T;
+  background-color: $FIELD; border: 1px solid $FIELD_B; border-radius: 10px; }
+QToolButton[text="Buscar"]:hover { background-color: $FIELD_H; }
+QToolButton[text="Buscar"]:checked { background-color: $VIEW; border: 1px solid $A; }
+QDockWidget#placesDock, QDockWidget#placesDock > QWidget { background-color: $PANE; color: $TXT; }
+QSS
+}
+
+store_name() { # La tienda se llama "Tienda" en el menú (sin marcas)
+    if [ -f /usr/share/applications/win11-store.desktop ] &&
+        { [ ! -e "$apps/win11-store.desktop" ] || grep -q '^X-Coucou-Override=true' "$apps/win11-store.desktop"; }; then
+        mkdir -p "$apps"
+        sed -e 's/^Name=.*/Name=Tienda/' -e '/^Name\[/d' -e '/^\[Desktop Entry\]/a X-Coucou-Override=true' \
+            /usr/share/applications/win11-store.desktop > "$apps/win11-store.desktop"
+    fi
+}
+
+apply() {
+    local mode accent transp
+    mode=$(kr win11rc Appearance mode); accent=$(kr win11rc Appearance accent); transp=$(kr win11rc Appearance transparency)
+    local prev_mode=$mode prev_transp=$transp
+    while (($#)); do
+        case "$1" in
+            --mode) mode=$2; shift ;;
+            --accent) accent=$2; shift ;;
+            --transparency) transp=$2; shift ;;
+        esac
+        shift
+    done
+    case "$mode" in light|dark) ;; *) mode=dark ;; esac
+    [[ "$accent" =~ ^#[0-9A-Fa-f]{6}$ ]] || accent='#6574F6'
+    accent=${accent^^}
+    case "$transp" in on|off) ;; *) transp=on ;; esac
+    local atext target cur
+    atext=$(text_on "$accent")
+    target=$([ "$mode" = dark ] && echo CoucouCode || echo CoucouCodeLight)
+    cur=$(kr kdeglobals General ColorScheme)
+
+    mkdir -p "$cfg/coucou"
+    # Recordar lo de antes de Coucou (una sola vez)
+    if [ "${cur#CoucouCode}" = "$cur" ] && [ ! -f "$state" ]; then
+        printf 'scheme=%s\nkvantum=%s\n' "$cur" "$(kr "$kv/kvantum.kvconfig" General theme)" > "$state"
+    fi
+    kw --file win11rc --group Appearance --key mode "$mode"
+    kw --file win11rc --group Appearance --key accent "$accent"
+    kw --file win11rc --group Appearance --key transparency "$transp"
+
+    # Archivos primero (nada visible) ...
+    kvantum "$mode" "$accent" "$atext"
+    store_name
+    dolphin_qss "$mode" "$accent"
+    local newdeco=0
+    decoration && newdeco=1
+
+    # ... y después todo de una vez. KWin congela la imagen actual de la pantalla
+    # (más tiempo si cambia el modo: colores, iconos, cursor, bordes y GTK), todo se
+    # aplica por detrás y en paralelo, y al final hay un solo fundido. Así no se ve
+    # cada parte repintarse por separado (eso era el parpadeo).
+    local modechange=0 freeze=450 old_accent
+    old_accent=$(kr win11rc Appearance accent_applied)
+    { [ "$mode" != "$prev_mode" ] || [ "$cur" != "$target" ]; } && modechange=1
+    [ "$modechange" = 1 ] && freeze=1300
+    qdbus6 org.kde.KWin /org/kde/KWin/BlendChanges org.kde.KWin.BlendChanges.start "$freeze" >/dev/null 2>&1 || true
+
+    (
+        [ "$cur" != "$target" ] && plasma-apply-colorscheme "$target" >/dev/null 2>&1
+        if [ "$cur" != "$target" ] || [ "$old_accent" != "$accent" ]; then
+            plasma-apply-colorscheme --accent-color "$accent" >/dev/null 2>&1 || true
+        fi
+        # El tono exacto del énfasis en la selección y los bordes de foco, con texto legible encima
+        kw --file kdeglobals --group General --key accentColorFromWallpaper false
+        kw --file kdeglobals --group Colors:Selection --key BackgroundNormal "$(rgb "$accent")"
+        kw --file kdeglobals --group Colors:Selection --key BackgroundAlternate "$(rgb "$accent")"
+        kw --file kdeglobals --group Colors:Selection --key ForegroundNormal "$(rgb "$atext")"
+        for g in View Window Button Selection Tooltip Complementary Header; do
+            kw --file kdeglobals --group "Colors:$g" --key DecorationFocus "$(rgb "$accent")"
+            kw --file kdeglobals --group "Colors:$g" --key DecorationHover "$(rgb "$accent")"
+        done
+        dbus-send --session --type=signal /KGlobalSettings org.kde.KGlobalSettings.notifyChange int32:0 int32:0 2>/dev/null || true
+    ) &
+    [ "$modechange" = 1 ] && mode_parts "$mode" &
+    # Tema de Plasma: de nuevo si cambió el modo o la transparencia
+    local deskname deskdir
+    deskname=$(kr plasmarc Theme name)
+    deskdir=${XDG_DATA_HOME:-$HOME/.local/share}/plasma/desktoptheme/$deskname
+    case "$deskname" in
+        "Coucou-$mode"|"Coucou-$mode-b")
+            local solid=on
+            [ -f "$deskdir/.coucou-solid" ] && solid=off
+            if [ "$solid" != "$transp" ]; then
+                desktop_theme "$mode" "$transp" &
+            fi ;;
+        *) desktop_theme "$mode" "$transp" & ;;
+    esac
+    # Paneles de Plasma (barra de Windows/CachyOS): translúcidos u opacos
+    qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \
+        "panels().forEach(function (p) { p.opacity = '$([ "$transp" = on ] && echo translucent || echo opaque)'; })" >/dev/null 2>&1 &
+    gtk "$mode" "$accent" &
+
+    if [ "$transp" != "$prev_transp" ]; then
+        local b
+        b=$([ "$transp" = on ] && echo true || echo false)
+        kw --file kwinrc --group Plugins --key blurEnabled "$b"
+        kw --file kwinrc --group Plugins --key contrastEnabled "$b"
+        for e in blur contrast; do
+            qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.$([ "$b" = true ] && echo loadEffect || echo unloadEffect) $e >/dev/null 2>&1 || true
+        done
+    fi
+    wait
+    kw --file win11rc --group Appearance --key accent_applied "$accent"
+    # KWin solo se recarga la primera vez que se ponen los bordes de Coucou (al activar el tema)
+    [ "$newdeco" = 1 ] && qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1
+
+    # La barra de Coucou toma el mismo énfasis (solo si ya está abierta: no la arranca)
+    pgrep -u "$(id -u)" -x coucou >/dev/null && /usr/bin/coucou --bar-accent auto --bar-glass "$transp" >/dev/null 2>&1 &
+    wait
+}
+
+case "${1:-}" in
+gtk)
+    # Solo GTK con el modo guardado (lo usa el instalador al actualizar, sin repintar todo)
+    m=$(kr win11rc Appearance mode)
+    gtk "$([ "$m" = light ] && echo light || echo dark)"
+    ;;
+apply)
+    shift
+    apply "$@"
+    ;;
+on)
+    apply
+    ;;
+off)
+    [ -f "$state" ] || exit 0
+    scheme=$(sed -n 's/^scheme=//p' "$state")
+    kvtheme=$(sed -n 's/^kvantum=//p' "$state")
+    [ -n "$kvtheme" ] && kw --file "$kv/kvantum.kvconfig" --group General --key theme "$kvtheme"
+    [ -n "$scheme" ] && plasma-apply-colorscheme "$scheme" >/dev/null 2>&1
+    desk=$(sed -n 's/^desk=//p' "$state")
+    [ -n "$desk" ] && plasma-apply-desktoptheme "$desk" >/dev/null 2>&1
+    deco=$(sed -n 's/^decoration=//p' "$state")
+    if [ -n "$deco" ]; then
+        kw --file kwinrc --group org.kde.kdecoration2 --key library "${deco%%|*}"
+        kw --file kwinrc --group org.kde.kdecoration2 --key theme "${deco#*|}"
+        qdbus6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1
+    fi
+    accent=$(kr win11rc Appearance accent)
+    [ -n "$accent" ] && plasma-apply-colorscheme --accent-color "$accent" >/dev/null 2>&1
+    rm -f "$state"
+    grep -qs '^X-Coucou-Override=true' "$apps/win11-store.desktop" && rm -f "$apps/win11-store.desktop"
+    ;;
+*)
+    echo "uso: coucou-colors apply [--mode dark|light] [--accent '#RRGGBB'] [--transparency on|off] | on | off" >&2
+    exit 2
+    ;;
+esac
+exit 0

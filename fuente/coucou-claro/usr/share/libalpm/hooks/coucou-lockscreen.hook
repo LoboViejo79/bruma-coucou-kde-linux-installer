@@ -1,0 +1,12 @@
+# Plasma o Coucou se actualizaron: rehace la copia del shell con la pantalla de bloqueo de Coucou
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/share/plasma/shells/org.kde.plasma.desktop/*
+Target = usr/share/coucou/lockscreen/*
+
+[Action]
+Description = Coucou Code: actualizando la pantalla de bloqueo...
+When = PostTransaction
+Exec = /usr/lib/coucou/lockscreen-sync --all

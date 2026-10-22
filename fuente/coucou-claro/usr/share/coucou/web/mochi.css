@@ -1,0 +1,190 @@
+/*
+    Coucou: el estilo de las transiciones de la barra (ver mochi.js). Lo agrega libcoucou-web.so
+    como hoja de estilo de usuario.
+*/
+/* Solo la isla y el mochi entran en la transición: el resto de la barra (1920 px de ancho) no se
+   fotografía ni se funde, sigue tal cual (fotografiarla hacía ir la animación a saltos) */
+:root { view-transition-name: none; }
+
+::view-transition-group(cc-isla), ::view-transition-group(cc-mochi) {
+    animation-duration: 440ms;
+    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+/* El botón se vuelve panel: el panel no se estira (se deformaba el contenido), se va descubriendo
+   desde abajo a medida que crece; el botón se desvanece enseguida */
+::view-transition-old(cc-isla), ::view-transition-new(cc-isla) {
+    height: 100%;
+    width: 100%;
+    object-fit: cover;
+    object-position: 50% 100%;
+}
+:root.cc-arriba::view-transition-old(cc-isla), :root.cc-arriba::view-transition-new(cc-isla) { object-position: 50% 0; }
+::view-transition-old(cc-isla) { animation-duration: 140ms; }
+::view-transition-new(cc-isla) { animation-duration: 220ms; }
+/* Cerrando: la isla se encoge hacia el botón del mochi (--cc-ox/--cc-oy) y se desvanece */
+::view-transition-group(cc-isla-sale) { animation: none; }
+::view-transition-old(cc-isla-sale) {
+    transform-origin: var(--cc-ox) var(--cc-oy);
+    animation: cc-encoge 360ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes cc-encoge {
+    to { transform: scale(0.04); opacity: 0; border-radius: 40px; }
+}
+
+/* El mochi es el mismo dibujo: viaja, sin fundirse con otro */
+::view-transition-old(cc-mochi) { display: none; }
+::view-transition-new(cc-mochi) { animation: none; }
+
+/* "Pantalla completa": el panel del mochi ocupa la pantalla (ver pantallaCompleta en mochi.js). Las
+   medidas, como .cc-fija; el mochi, en su lugar del panel grande; sin la flechita */
+.cc-grande #island {
+    width: var(--cc-w) !important;
+    height: var(--cc-h) !important;
+    top: var(--cc-y) !important;
+    left: var(--cc-cx) !important;
+    transform: translateX(-50%) !important;
+}
+.cc-grande #content { width: var(--cc-w) !important; height: var(--cc-h) !important; left: 0 !important; top: 0 !important; }
+.cc-grande #bot-canvas { left: var(--cc-mx) !important; top: var(--cc-my) !important; }
+.cc-grande #bot-glow, .cc-redim #bot-glow { opacity: 0 !important; transition: none !important; }   /* (el brillo del mochi se quedaba donde estaba en el panel chico) */
+.cc-grande #island::before { opacity: 0 !important; }
+.cc-grande #island { border-radius: 0 0 18px 18px !important; }   /* (de borde a borde, como una ventana maximizada) */
+/* De fondo sólido (el de la barra con "fondo sólido"): como vidrio dejaba ver la pantalla de atrás,
+   borrosa, y desenfocar toda la pantalla en cada cuadro pesaba */
+:root[data-theme="light"].cc-grande #island { background: linear-gradient(180deg, #ffffff 0%, #f2f0ff 100%) !important; }
+:root[data-theme="dark"].cc-grande #island { background: linear-gradient(180deg, rgb(40, 36, 86) 0%, rgb(24, 22, 56) 100%) !important; }
+.cc-grande #island, .cc-grande #island-clip { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+/* Con la pestaña Chat, como Visual Studio Code: arriba las pestañas, el proyecto y el modelo; a la
+   derecha, en una columna, el chat (la presentación y las tarjetas, o la conversación) con el cuadro
+   de escribir abajo; en el resto, Coucou Code (el explorador, el editor, la terminal) */
+.cc-grande .chat-card.cx .chat-body.cc-vscode {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) var(--cc-chat, clamp(340px, 26vw, 520px));
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    column-gap: 12px;
+}
+.chat-body.cc-vscode > .cx-top { grid-column: 1 / -1; grid-row: 1; }
+.chat-body.cc-vscode > .cx-main { grid-column: 2; grid-row: 2; min-height: 0; }
+.chat-body.cc-vscode > .chat-bar { grid-column: 2; grid-row: 3; }
+.chat-body.cc-vscode > .cc-ide { display: block; right: calc(var(--cc-chat, clamp(340px, 26vw, 520px)) + 12px) !important; }
+.chat-body.cc-precarga > .cc-ide { display: block; visibility: hidden; pointer-events: none; }   /* (Coucou Code cargándose de antemano) */
+/* Los divisores para ajustar el ancho del chat y el alto de la terminal (se ven al pasar por encima) */
+.cc-div { display: none; position: absolute; z-index: 7; }
+.chat-body.cc-vscode > .cc-div { display: block; }
+.cc-div-chat { top: 60px; bottom: 6px; width: 12px; right: calc(var(--cc-chat, clamp(340px, 26vw, 520px))); cursor: col-resize; }
+.cc-div-term { height: 14px; cursor: row-resize; }
+.cc-div::after { content: ""; position: absolute; border-radius: 3px; background: rgba(109, 93, 240, .55); opacity: 0; transition: opacity .15s; }
+.cc-div-chat::after { left: 5px; width: 2px; top: 30%; bottom: 30%; }
+.cc-div-term::after { top: 6px; height: 2px; left: 35%; right: 35%; }
+.cc-div:hover::after, .cc-arrastrando .cc-div::after { opacity: 1; }
+.cc-arrastrando .cc-ide iframe { pointer-events: none; }   /* (si no, el iframe se queda con el arrastre) */
+/* Los botones de ventana: minimizar, restaurar, cerrar */
+.cc-ventana { display: none; align-items: center; gap: 2px; margin-left: 6px; }
+.cc-grande .cc-ventana { display: flex; }
+.cc-vbtn { display: grid; place-items: center; width: 34px; height: 30px; border: 0; border-radius: 9px; background: none; color: var(--ink); opacity: .75; cursor: pointer; transition: background .15s, opacity .15s, color .15s; }
+.cc-vbtn:hover { opacity: 1; background: rgba(var(--fg), .08); }
+.cc-vbtn.cc-v-cerrar:hover { background: #e5484d; color: #fff; }
+.chat-body.cc-vscode .cx-side, .chat-body.cc-vscode .cx-panel { display: none !important; }
+.chat-body.cc-vscode .cx-center { flex: 1 1 auto; min-width: 0; }
+.chat-body.cc-vscode .cx-hero { padding-left: 2px !important; }
+.chat-body.cc-vscode .cx-illus { display: none !important; }   /* (el dibujo: en la columna tapaba el título) */
+.chat-body.cc-vscode .cx-hero-text { flex: 1 1 auto !important; min-width: 0 !important; width: auto !important; }
+.chat-body.cc-vscode .cx-title { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
+.chat-body.cc-vscode .cx-cards { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+/* La transición: el recuadro del panel va de un tamaño al otro y recorta; adentro, la foto de
+   antes (del tamaño de antes) se va y la de después (del tamaño de después) se descubre a medida
+   que el recuadro crece, como las vistas del Centro de control. Lo que viaja va encima */
+::view-transition-group(cc-panel), ::view-transition-group(cc-p-tabs), ::view-transition-group(cc-p-proj),
+::view-transition-group(cc-p-who), ::view-transition-group(cc-p-tools), ::view-transition-group(cc-p-mas),
+::view-transition-group(cc-p-barra), ::view-transition-group(cc-p-hero), ::view-transition-group(cc-p-log),
+::view-transition-group(cc-p-tarjeta0), ::view-transition-group(cc-p-tarjeta1), ::view-transition-group(cc-p-tarjeta2),
+::view-transition-group(cc-p-tarjeta3), ::view-transition-group(cc-p-tarjeta4) {
+    animation-duration: 480ms;
+    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+/* (el redondeo va del del panel al de la pantalla completa: si no, las esquinas saltaban al final) */
+::view-transition-image-pair(cc-panel) { overflow: hidden; border-radius: 22px; animation: cc-esquinas-grande 480ms cubic-bezier(0.32, 0.72, 0, 1) both; }
+:root.cc-achica::view-transition-image-pair(cc-panel) { animation-name: cc-esquinas-panel; }
+@keyframes cc-esquinas-grande { from { border-radius: 22px; } to { border-radius: 0 0 18px 18px; } }
+@keyframes cc-esquinas-panel { from { border-radius: 0 0 18px 18px; } to { border-radius: 22px; } }
+::view-transition-old(cc-panel), ::view-transition-new(cc-panel) {
+    width: auto; height: auto; inset: 0 auto auto 0; object-fit: none; object-position: 0 0;
+}
+/* (la de después, entera desde el principio, debajo; la de antes encima, desvaneciéndose: si las dos
+   se fundían a la vez, a mitad de camino el panel se veía transparente) */
+::view-transition-new(cc-panel) { animation: none; z-index: 0; }
+::view-transition-old(cc-panel) { animation: cc-se-va 240ms ease-out both; z-index: 1; }
+@keyframes cc-se-va { to { opacity: 0; } }
+/* Volviendo al panel, al revés: la grande (la de antes) entera debajo y la del panel encima, apareciendo */
+:root.cc-achica::view-transition-old(cc-panel) { animation: none; z-index: 0; }
+:root.cc-achica::view-transition-new(cc-panel) { animation: cc-llega 240ms ease-out both; z-index: 1; }
+@keyframes cc-llega { from { opacity: 0; } }
+
+/* La flechita de los paneles (la que apunta al botón): aparece ya en su lugar, sin deslizarse */
+#island::before { transition: opacity 0.2s !important; }
+.cc-fija #island { --caret-x: var(--cc-caret) !important; }
+
+/* Mientras la barra anima con su resorte: la isla y el mochi, ya donde van a quedar (mochi.js) */
+.cc-fija #island {
+    width: var(--cc-w) !important;
+    height: var(--cc-h) !important;
+    top: var(--cc-y) !important;
+    left: var(--cc-cx) !important;
+    transform: translateX(-50%) !important;
+}
+.cc-fija #content {
+    width: var(--cc-w) !important;
+    height: var(--cc-h) !important;
+    left: 0 !important;
+    top: 0 !important;
+}
+.cc-fija-mochi #bot-canvas { left: var(--cc-mx) !important; top: var(--cc-my) !important; }
+/* En el chat del mochi (y en Código, Archivos y Terminal, que usan el mismo lugar) el dibujito queda
+   en el centro del espacio que tiene arriba de la columna de la izquierda (.cx-mochi-spot): la barra
+   lo dejaba más arriba */
+#root:has(#island.open .view.on .chat-card.cx) #bot-canvas { translate: 0 28px; }
+/* Los 28 px se hacen de a poco (la transición de #bot-canvas, más abajo): si no, al tocar el mochi
+   bajaba de golpe en el dock, y al cerrar subía de golpe antes de volver. Cuando la isla se fija
+   para su transición (cc-fija-mochi), ya enteros: así ella lo lleva justo adonde queda */
+html.cc-fija-mochi:has(#island .view.on .chat-card.cx) #root #bot-canvas { translate: 0 28px; transition: opacity 0.15s; }
+.cc-cerrando #island { opacity: 0 !important; }
+
+/* Mientras la barra acomoda un panel del que todavía no se sabe el tamaño (ver mochi.js) */
+.cc-oculta #island { opacity: 0 !important; transition: none !important; }
+
+/* La columna del chat (Conversación, Historial…) en su tarjeta, debajo del lugar del mochi, como la
+   de la izquierda de Código, Archivos y Terminal (ver mochi.js) */
+.chat-card.cx .cx-side::before {
+    content: ""; position: absolute; inset: 112px 0 0 0; pointer-events: none;
+    border: 1px solid var(--in-line, rgba(60, 50, 140, .1)); border-radius: 18px; background: var(--card);
+}
+.chat-card.cx .cx-side { padding-right: 0 !important; border-right: 0 !important; }   /* (la tarjeta reemplaza la rayita) */
+#island .chat-card.cx .cx-side > .cx-nav { position: relative; height: 36px !important; margin: 0 6px !important; border-radius: 9px !important; }
+#island .chat-card.cx .cx-side > .cx-nav:first-of-type { margin-top: 6px !important; }
+#island .chat-card.cx .cx-side > .cx-nav.on { font-weight: 600; }
+
+/* Saliendo del panel del mochi hacia otro: el dibujito se oculta mientras vuelve al dock */
+#bot-canvas { transition: opacity 0.15s, translate 0.36s cubic-bezier(0.4, 0, 0.2, 1); }
+.cc-sin-mochi #bot-canvas { opacity: 0 !important; }
+
+/* La ventana de Juegos: qué quedó en pausa con el modo juego (lo agrega mochi.js debajo del título) */
+.cc-juego-aviso {
+    margin: 4px 0 6px;
+    padding: 7px 12px;
+    border-radius: 12px;
+    font-size: 11.5px;
+    line-height: 1.35;
+    background: color-mix(in srgb, currentColor 9%, transparent);
+    border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+}
+
+/* Código, Archivos y Terminal adentro del panel del mochi (ver mochi.js): Coucou Code, debajo de las
+   pestañas; lo demás del chat se oculta sin dejar de ocupar su lugar (el panel no cambia de tamaño) */
+.chat-body.cc-con-ide { position: relative !important; }
+.chat-body.cc-con-ide > :not(.cx-top):not(.cc-ide) { visibility: hidden !important; }
+.chat-body.cc-con-ide > .cx-top { z-index: 6; }   /* (sus menús, encima) */
+.cc-ide { display: none; position: absolute; left: 2px; right: 2px; bottom: 2px; top: 56px; z-index: 5; }   /* (el mismo margen que el Chat) */
+.chat-body.cc-con-ide > .cc-ide { display: block; }
+.cc-ide iframe { width: 100%; height: 100%; border: 0; background: transparent; color-scheme: normal; opacity: 0; transition: opacity 0.18s; }
+.cc-ide iframe.listo { opacity: 1; }

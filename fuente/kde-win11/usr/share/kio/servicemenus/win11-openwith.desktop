@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+X-KDE-ServiceTypes=KonqPopupMenu/Plugin
+MimeType=all/allfiles;
+Actions=elegir
+X-KDE-Priority=TopLevel
+
+[Desktop Action elegir]
+Name=Elegir otra aplicación
+Icon=document-open
+Exec=/usr/bin/win11-openwith %F

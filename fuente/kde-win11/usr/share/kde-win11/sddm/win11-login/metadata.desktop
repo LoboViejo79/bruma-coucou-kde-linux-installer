@@ -1,0 +1,14 @@
+[SddmGreeterTheme]
+Name=Windows 11
+Description=Inicio de sesión al estilo de Windows 11
+Author=kde-win11
+Type=sddm-theme
+Version=1.0
+Website=
+Screenshot=preview.png
+MainScript=Main.qml
+ConfigFile=theme.conf
+TranslationsDirectory=translations
+Theme-Id=win11-login
+Theme-API=2.0
+QtVersion=6

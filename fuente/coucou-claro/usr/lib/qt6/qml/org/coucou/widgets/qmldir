@@ -1,0 +1,10 @@
+module org.coucou.widgets
+singleton Paletas 1.0 Paletas.qml
+Tarjeta 1.0 Tarjeta.qml
+Escala 1.0 Escala.qml
+Vidrio 1.0 Vidrio.qml
+PixelArte 1.0 PixelArte.qml
+PixelTexto 1.0 PixelTexto.qml
+ConfigColor 1.0 ConfigColor.qml
+Lienzo 1.0 Lienzo.qml
+Texto 1.0 Texto.qml

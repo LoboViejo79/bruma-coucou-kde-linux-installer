@@ -1,0 +1,11 @@
+#!/bin/sh
+# Espera a que se vea la sesión (splash de Plasma) o el login y recién ahí cierra
+# Plymouth, sin borrar la pantalla: el paso arranque -> escritorio queda sin negro.
+plymouth --ping || exit 0
+i=0
+while [ $i -lt 150 ]; do
+    { pgrep -x ksplashqml || pgrep -x plasmashell || pgrep -f sddm-greeter; } >/dev/null && break
+    sleep 0.2
+    i=$((i + 1))
+done
+exec plymouth quit --retain-splash

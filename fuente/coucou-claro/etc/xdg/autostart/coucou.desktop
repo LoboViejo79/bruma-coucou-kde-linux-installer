@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Coucou
+Exec=/usr/bin/coucou-launch
+Icon=coucou
+NoDisplay=true
+X-KDE-autostart-phase=2
+# La barra necesita Wayland: no en la sesión X11 de AnyDesk (Xfce)
+NotShowIn=XFCE;
